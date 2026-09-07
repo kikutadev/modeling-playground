@@ -1,0 +1,58 @@
+{
+  "updated": "2026-09-07",
+  "assets": [
+    {
+      "id": "kenney-blaster-kit",
+      "version": "2.1",
+      "source": "https://kenney.nl/assets/blaster-kit",
+      "license": "CC0-1.0",
+      "archiveSha256": "91e3093e95427d59625e7e2ce2d0399b861600160fd0b4ada7714796b67cea8c",
+      "path": "kenney-blaster-kit",
+      "retained": ["FBX models", "colormap texture"]
+    },
+    {
+      "id": "kenney-factory-kit",
+      "version": "3.0",
+      "source": "https://kenney.nl/assets/factory-kit",
+      "license": "CC0-1.0",
+      "archiveSha256": "7e31fb2308e90304672bd15cd18fa9d9f02c03731a8cbc57a8e3e1c181dfb0a7",
+      "path": "kenney-factory-kit",
+      "retained": ["FBX models", "textures"]
+    },
+    {
+      "id": "kenney-crosshair-pack",
+      "version": "1.1",
+      "source": "https://kenney.nl/assets/crosshair-pack",
+      "license": "CC0-1.0",
+      "archiveSha256": "26cf8f3e135f8c9a3354a8a6e6c2576e78bd8e2db01c841f93ab43ad3205a78f",
+      "path": "kenney-crosshair-pack",
+      "retained": ["64x64 light PNG set", "light tilesheet", "outline tilesheet"]
+    },
+    {
+      "id": "kenney-impact-sounds",
+      "version": "1.0",
+      "source": "https://kenney.nl/assets/impact-sounds",
+      "license": "CC0-1.0",
+      "archiveSha256": "029d734af1582474edf3a694d1b0cebc97c1c152f2f39fa34d4c2bafc5de77f8",
+      "path": "kenney-impact-sounds",
+      "retained": ["OGG audio"]
+    },
+    {
+      "id": "kenney-sci-fi-sounds",
+      "version": "1.0",
+      "source": "https://kenney.nl/assets/sci-fi-sounds",
+      "license": "CC0-1.0",
+      "archiveSha256": "119340f351a5098ad814f78719438c0da355a9ce8a4c8a3af6a8d48aa3d49e04",
+      "path": "kenney-sci-fi-sounds",
+      "retained": ["OGG audio"]
+    },
+    {
+      "id": "kenney-starter-kit-fps-assets",
+      "version": "snapshot",
+      "source": "https://github.com/KenneyNL/Starter-Kit-FPS",
+      "license": "CC0 asset subset; upstream project code MIT",
+      "path": "kenney-fps-assets",
+      "retained": ["GLB models", "OGG audio", "PNG sprites"]
+    }
+  ]
+}
