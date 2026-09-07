@@ -27,6 +27,9 @@ gltf.scene.traverse((object) => {
   if (object.isBone) bones.push(object.name);
   if (!object.isMesh) return;
   const geometry = object.geometry;
+  if (geometry.attributes.uv) {
+    throw new Error(`${object.name}: STRIX uses no textures; unused UVs make Blender export non-deterministic`);
+  }
   triangles += geometry.index ? geometry.index.count / 3 : geometry.attributes.position.count / 3;
   if (!object.isSkinnedMesh) return;
   skinnedMeshes += 1;

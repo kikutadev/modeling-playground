@@ -65,7 +65,7 @@ bastion:
 
 # Generate STRIX in Blender Python, then verify the exported GLB contract.
 strix:
-    "{{blender}}" --background --python scripts/build_strix_blender.py
+    "{{blender}}" --background --python-exit-code 1 --python scripts/build_strix_blender.py
     node scripts/write_strix_contract.mjs
     node scripts/check_strix_blender.mjs
 

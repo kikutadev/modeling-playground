@@ -27,7 +27,7 @@ const WATCH_FILES = [
 ].map((path) => join(ROOT, path));
 
 const BUILD_STEPS = [
-  { command: BLENDER, args: ['--background', '--python', 'scripts/build_strix_blender.py'] },
+  { command: BLENDER, args: ['--background', '--python-exit-code', '1', '--python', 'scripts/build_strix_blender.py'], env: { ...process.env, STRIX_GLTF_ONLY: '1' } },
   { command: process.execPath, args: ['scripts/write_strix_contract.mjs'] },
   { command: process.execPath, args: ['scripts/check_strix_blender.mjs'] },
 ];
@@ -84,9 +84,9 @@ async function ensureDevServer() {
   throw new Error('Vite did not become ready within 10 seconds.');
 }
 
-async function runStep({ command, args }) {
+async function runStep({ command, args, env = process.env }) {
   if (shuttingDown) return 1;
-  buildProcess = spawn(command, args, { cwd: ROOT, stdio: 'inherit' });
+  buildProcess = spawn(command, args, { cwd: ROOT, stdio: 'inherit', env });
   const exitCode = await new Promise((resolve) => {
     buildProcess.once('exit', (code) => resolve(code ?? 1));
   });

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -22,6 +23,7 @@ from mathutils import Euler, Matrix, Quaternion, Vector
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "output"
 FPS = 60
+GLTF_ONLY = os.environ.get("STRIX_GLTF_ONLY") == "1"
 
 # glTF -> Blender basis: (x, y, z) -> (x, -z, y)
 C = Matrix(((1.0, 0.0, 0.0), (0.0, 0.0, -1.0), (0.0, 1.0, 0.0)))
@@ -689,6 +691,14 @@ def export_asset(arm):
     OUT.mkdir(parents=True, exist_ok=True)
     scene = bpy.context.scene
     scene.render.fps = FPS
+    # STRIX uses flat/PBR colors only. Blender primitives create UV layers by
+    # default even though no material consumes them; exporter UV bytes can vary
+    # by a few float bits between otherwise identical runs. Removing the unused
+    # layers makes the delivered GLB byte-stable as well as slightly smaller.
+    for obj in scene.objects:
+        if obj.type == "MESH":
+            for layer in list(obj.data.uv_layers):
+                obj.data.uv_layers.remove(layer)
     # Export only the generated model hierarchy; studio objects are added later.
     bpy.ops.object.select_all(action="DESELECT")
     arm.select_set(True)
@@ -793,8 +803,12 @@ def main():
     bake_actions(arm)
     validate_generated(arm)
     export_asset(arm)
-    add_studio_and_render(arm, mats)
-    print(f"STRIX-04 Blender authoring complete: {len(arm.data.bones)} bones, {len([o for o in bpy.context.scene.objects if o.type=='MESH'])} meshes")
+    # Watch-mode iterations only need the browser GLB. Keeping .blend and the
+    # studio render untouched avoids noisy binary diffs on every source save.
+    if not GLTF_ONLY:
+        add_studio_and_render(arm, mats)
+    mode = "GLB-only" if GLTF_ONLY else "full authoring"
+    print(f"STRIX-04 Blender {mode} complete: {len(arm.data.bones)} bones, {len([o for o in bpy.context.scene.objects if o.type=='MESH'])} meshes")
 
 
 if __name__ == "__main__":
