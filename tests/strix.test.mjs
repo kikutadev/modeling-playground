@@ -82,7 +82,15 @@ test('exported four-leg rig moves actual rigid armor and keeps feet level above 
   const asset=createStrix();bindAsset(asset.root,asset.clips,asset.definition);
   const bytes=new Uint8Array(await exportGlb(asset.root,asset.clips));
   const delivered=await readFile(new URL('../output/strix.glb',import.meta.url));
-  assert.deepEqual(new Uint8Array(delivered),bytes,'Delivered GLB must match its generator');
+  const deliveredValidation=await validateBytes(new Uint8Array(delivered),{maxIssues:20});
+  assert.equal(deliveredValidation.issues.numErrors,0,JSON.stringify(deliveredValidation.issues.messages));
+  const deliveredLoaded=await new GLTFLoader().parseAsync(delivered.buffer.slice(delivered.byteOffset,delivered.byteOffset+delivered.byteLength),'');
+  const deliveredIk=IKPose.fromModel(deliveredLoaded.scene);
+  assert.ok(deliveredIk,'Delivered Blender GLB keeps editable IK metadata');
+  assert.equal(deliveredIk.chains.length,4);
+  assert.deepEqual(deliveredLoaded.animations.map(clip=>clip.name).sort(),['Advance','Boost','Idle','Walk']);
+  let deliveredSkins=0;deliveredLoaded.scene.traverse(object=>{if(object.isSkinnedMesh)deliveredSkins++;});
+  assert.ok(deliveredSkins>=100,'Delivered Blender GLB retains rigid skinned hard-surface parts');
   const validation=await validateBytes(bytes,{maxIssues:20});
   assert.equal(validation.issues.numErrors,0,JSON.stringify(validation.issues.messages));
   const loaded=await new GLTFLoader().parseAsync(bytes.buffer,'');

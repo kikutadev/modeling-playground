@@ -24,17 +24,17 @@ Pages検証では、モデル読込の完了（モデル名・「表示中」・
 - `runtime/`：DOMに依存しない再生・IK・横薙ぎ計算・ソケット追従・時間イベント。
 - `viewer/`：共通Viewerの表示と入力。
 
-`just models-js`でThree.js製モデルをまとめて再生成できます。[設計とゲーム側への接続方法](docs/asset-architecture.md)。
+`just models-js`でThree.js製モデルをまとめて再生成できます（STRIXはBlender Pythonへ移植済みのため含みません）。[設計とゲーム側への接続方法](docs/asset-architecture.md)。
 
 ## STRIX-04 — 四脚リグ・歩行
 
-鋭角ヘッド、青灰色の装甲、双肩砲を持つ四脚型。28ボーンの剛体リグで、右前＋左後／左前＋右後を交互に持ち上げる対角ペア歩行。腰を低くし、静止時の膝も約83°に折り畳んでいます。
+鋭角ヘッド、青灰色の装甲、双肩砲を持つ四脚型。Blender Pythonで205個のモデルメッシュと28ボーンの剛体リグを再生成し、右前＋左後／左前＋右後を交互に持ち上げる対角ペア歩行を60 fpsで焼き込みます。腰を低くし、静止時の膝も約83°に折り畳んでいます。
 
-- [ローカルで再生](http://127.0.0.1:5188/?model=strix) / [GLB](output/strix.glb) / [斜め](output/strix-quarter.png) / [骨格](output/strix-rig.png)
+- [ローカルで再生](http://127.0.0.1:5188/?model=strix) / [GLB](output/strix.glb) / [Blender](output/strix.blend) / [Blender生成プレビュー](output/strix-blender.png) / [斜め](output/strix-quarter.png) / [骨格](output/strix-rig.png)
 - `Idle`は待機、`Walk`はその場歩行、`Advance`は約1.16 m前進する一回再生。2.4秒周期で、床に対する足の接地は`Advance`で確認できます。
 - `Boost`は浮上・前傾加速・着地まで3.2秒で4.8 m前進。Viewerで一時停止して足先・膝・腰をIK操作できます。
 - 対角ペアが同期し、切替時には4本接地。足裏水平・固定脚長を維持します。2ボーンIKの結果を60 Hzで焼き込み、普通のGLBアニメーションとして再生します。
-- `just strix`でGLBと骨格規格を再生成。[設計・歩行仕様・検証・制約](docs/strix-study.md)。地形対応やパーツ交換UIは未実装です。
+- `just strix`でBlender Pythonから`.blend`・GLB・骨格規格を再生成し、glTF validator・28ボーン・4クリップ・4脚IKメタデータ・剛体スキンを再読込検証します。Three.js版の形状／歩容コードは移植時の挙動リファレンスとして残しています。[設計・歩行仕様・検証・制約](docs/strix-study.md)。地形対応やパーツ交換UIは未実装です。
 
 ## IRON YARD — ロボットTPS試作
 

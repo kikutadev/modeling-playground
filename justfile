@@ -57,15 +57,17 @@ raven:
     node scripts/build_raven.mjs
 
 # Three.js authoring path; Python/Blender assets remain usable without regeneration.
-models-js: suzu raven bastion strix ashley
+models-js: suzu raven bastion ashley
 
 # Generate the ground-heavy robot with 11 interchangeable module sockets.
 bastion:
     node scripts/build_bastion.mjs
 
-# Generate the four-legged IK rig and Idle / Walk / Advance / Boost clips.
+# Generate STRIX in Blender Python, then verify the exported GLB contract.
 strix:
-    node scripts/build_strix.mjs
+    "{{blender}}" --background --python scripts/build_strix_blender.py
+    node scripts/write_strix_contract.mjs
+    node scripts/check_strix_blender.mjs
 
 # Generate the textured low-poly Ashley study and the editable PNG atlas.
 ashley:

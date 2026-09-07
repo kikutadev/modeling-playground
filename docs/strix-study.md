@@ -2,16 +2,16 @@
 
 BASTIONの保存済み初稿（`49b370c`）とは別機体。添付された青い四脚メカの画像から、低い四脚シャシー、斜めに張り出した脚、尖った頭部、双肩砲、青灰色の積層装甲を参考にした。公式機体の精密複製ではなく、生成コードによるオリジナルの造形・歩行研究。
 
-[ローカルで再生](http://127.0.0.1:5188/?model=strix) / [GLB](../output/strix.glb) / [骨格・クリップ規格](../output/strix.asset.json)
+[ローカルで再生](http://127.0.0.1:5188/?model=strix) / [GLB](../output/strix.glb) / [Blender](../output/strix.blend) / [Blender生成プレビュー](../output/strix-blender.png) / [骨格・クリップ規格](../output/strix.asset.json)
 
 ## 造形
 
 - 先端へ絞った楔形の頭部、中央稜線、後方へ伸びる側頭フィン、赤い細線状のセンサー。
 - 胸を左右の装甲に分け、中央の張り出した胸部と薄い旋回腰を対比。四脚のシャシーは上半身とは独立した厚い前後長を持つ。
-- 各脚は張り出す上節・下向きの下節・水平な足先。膝の回転部、内部フレーム、外向きの脛装甲を分け、金属は一つの関節へ100%ウェイト付けする。
+- 各脚は張り出す上節・下向きの下節・水平な足先。膝の回転部、内部フレーム、外向きの脛装甲を分け、Blender側では各ハードサーフェス部品を単一ボーンへ100%ウェイト付けした剛体スキンとして出力する。 glTFへ出す28ボーンのrest軸は全て共通軸へ揃え、既存ランタイムが要求するlocal rotation=identityを保つ。脚や砲身の見た目の向きはメッシュとベイク済みActionで表現する。
 - 双肩の4砲身ユニット、右手の長銃、左腕の長い盾。青灰色装甲と暗いフレーム、金属色の継ぎ輪で構成。今回は画像テクスチャではなくPBR色材質を使用。
 
-Idleの静止時は約4.78 × 3.46 × 4.76 m、6,324三角形、205メッシュ、28ボーン、約1.77 MiB。主噴射・浮上噴射のノズルと4本の噴射専用ボーンを含む。関節と装甲を別物として確認しやすい分割を優先し、ゲーム向けの描画呼出し最適化は未実施。
+Blender生成GLBは約4.76 × 3.46 × 5.34 m、8,872三角形、205メッシュ、28ボーン、約1.56 MiB。主噴射・浮上噴射のノズルと4本の噴射専用ボーンを含む。関節と装甲を別物として確認しやすい分割を優先し、ゲーム向けの描画呼出し最適化は未実施。
 
 腰の基準高さは初稿の2.12 mから1.58 mへ変更。上節・下節は各1.62 mを保ち、接地点を左右±2.00 m／前後±1.65 mへ少し寄せ、膝の内角を約83.5°にした。静止時から腰より膝が高い、折り畳んだ構えにする。[変更前の斜め](../output/strix-before-trot-quarter.png) / [変更前の側面](../output/strix-before-trot-side.png)。
 
@@ -82,7 +82,7 @@ Viewerで`Boost`を選択して再生する。一時停止すると4足のター
 
 ## 再生成・検証・制約
 
-`just strix`で`output/strix.glb`と`strix.asset.json`を再生成する。定義・足先軌道とIK・ブースト演出曲線・造形・出力を`strix-definition.mjs`、`strix-motion.mjs`、`strix-boost.mjs`、`strix.mjs`、`scripts/build_strix.mjs`に分離。RAVENと同じ剛体スキニング・モーション焼き込み・アセット契約を使用する。
+`just strix`で`scripts/build_strix_blender.py`をBlenderのbackground modeで実行し、`output/strix.blend`・`output/strix.glb`・`strix.asset.json`・`strix-blender.png`を再生成する。生成後は`scripts/check_strix_blender.mjs`がGLBを再読込し、glTF validator、28ボーン、205以上の剛体スキン、Idle / Walk / Advance / Boost、4脚IKメタデータを検証する。`strix-definition.mjs`、`strix-motion.mjs`、`strix-boost.mjs`、`strix.mjs`はゲーム側の数値挙動と移植回帰テストのリファレンスとして残すが、配布用STRIXの生成元はBlender Pythonを正とする。
 
 Nodeテストは全周期の対角ペアの接地・高さ・位相の一致、ペア交代と4本接地の重なり、低い腰と静止時の鋭角の膝、関節長、非クランプ、前進と組み合わせた接地足の非滑り、ループ、回転の連続性を検査する。Boostも120 Hzで軌道・接地時の非滑り・関節の連続性を検査。再読込GLBでは足先誤差2 mm以内、接地中の足裏水平（Boost飛行中のみ足首ピッチを許可）、全頂点の床貫通3 mm以内、剛体ウェイト、validator、生成物と原本の一致を確認。IKメタデータの再読込、足・ポール・腰操作、到達制限、ブーストからの姿勢引継ぎ、繰返しリセット、噴射ソケットも検査する。Playwrightは5方向表示・対角ペア歩行に加え、Boostの複数角度と時刻、IKドラッグ、FK、リセット前後の画像一致、終端保持と再生を確認する。
 
