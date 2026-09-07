@@ -84,6 +84,12 @@ Viewerで`Boost`を選択して再生する。一時停止すると4足のター
 
 `just strix`で`scripts/build_strix_blender.py`をBlenderのbackground modeで実行し、`output/strix.blend`・`output/strix.glb`・`strix.asset.json`・`strix-blender.png`を再生成する。生成後は`scripts/check_strix_blender.mjs`がGLBを再読込し、glTF validator、28ボーン、205以上の剛体スキン、Idle / Walk / Advance / Boost、4脚IKメタデータを検証する。`strix-definition.mjs`、`strix-motion.mjs`、`strix-boost.mjs`、`strix.mjs`はゲーム側の数値挙動と移植回帰テストのリファレンスとして残すが、配布用STRIXの生成元はBlender Pythonを正とする。
 
+### 反復開発
+
+`node scripts/dev_strix.mjs`（`just`を導入している環境では`just strix-dev`でも同じ）はViteが既に5188番で動いていれば再利用し、停止中ならローカルViteを起動する。その後STRIXを一度生成・検証し、Blender Python本体とSTRIXの定義・モーション参照ファイルを監視する。変更が連続した場合は180 msでまとめ、ビルド中の変更は次の1回へ集約して直列実行する。失敗時は直前の有効なGLBを残す。
+
+Viteは`output/strix.glb`の変更を検知するとViewerを自動更新するため、通常の調整ループは「`node scripts/dev_strix.mjs`を起動 → `scripts/build_strix_blender.py`等を編集 → `http://127.0.0.1:5188/?model=strix`を見る」だけでよい。ランナーだけ確認したい場合は`node scripts/dev_strix.mjs --no-initial-build`で初回Blender生成を省略できる。
+
 Nodeテストは全周期の対角ペアの接地・高さ・位相の一致、ペア交代と4本接地の重なり、低い腰と静止時の鋭角の膝、関節長、非クランプ、前進と組み合わせた接地足の非滑り、ループ、回転の連続性を検査する。Boostも120 Hzで軌道・接地時の非滑り・関節の連続性を検査。再読込GLBでは足先誤差2 mm以内、接地中の足裏水平（Boost飛行中のみ足首ピッチを許可）、全頂点の床貫通3 mm以内、剛体ウェイト、validator、生成物と原本の一致を確認。IKメタデータの再読込、足・ポール・腰操作、到達制限、ブーストからの姿勢引継ぎ、繰返しリセット、噴射ソケットも検査する。Playwrightは5方向表示・対角ペア歩行に加え、Boostの複数角度と時刻、IKドラッグ、FK、リセット前後の画像一致、終端保持と再生を確認する。
 
 四脚IKは足先と膝の向きを操作する幾何学的な制御であり、地形を検出する自動接地IKではない。BASTIONの交換UIは継承していない。配管・油圧部は装甲と同様の剛体表現で、複数関節をまたぐシリンダーの伸縮シミュレーションは含まない。任意のIK/FK編集時の床・自機との衝突回避、関節の機械的可動域制限は未実装。旋回・段差追従・地形IK・射撃反動・歩き始めと停止の遷移は今後の工程。

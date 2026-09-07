@@ -69,6 +69,10 @@ strix:
     node scripts/write_strix_contract.mjs
     node scripts/check_strix_blender.mjs
 
+# Start/reuse Vite, rebuild STRIX once, then regenerate on authoring/reference changes.
+strix-dev:
+    node scripts/dev_strix.mjs
+
 # Generate the textured low-poly Ashley study and the editable PNG atlas.
 ashley:
     node scripts/build_ashley.mjs
