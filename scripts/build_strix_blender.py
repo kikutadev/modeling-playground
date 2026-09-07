@@ -295,7 +295,8 @@ def transform_local(local: Vector, origin: Vector, q: Quaternion | None) -> Vect
     return origin + (q @ local if q else local)
 
 
-def box(arm, bone, name, pos, size, mat, q=None, bevel=0.016):
+def box(arm, bone, name, pos, size, mat, q=None):
+    """Create the exact sharp BoxGeometry silhouette used by the Three.js source."""
     center = transform_local(Vector(pos), GLOBAL_REST[bone], q)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=gv(center))
     obj = bpy.context.object
@@ -307,7 +308,6 @@ def box(arm, bone, name, pos, size, mat, q=None, bevel=0.016):
         obj.rotation_mode = "QUATERNION"
         obj.rotation_quaternion = gquat_to_b(q)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    apply_bevel(obj, bevel)
     return bone_parent(obj, arm, bone)
 
 
@@ -337,24 +337,106 @@ def convex_hull(arm, bone, name, points, mat, q=None):
     bm.to_mesh(mesh)
     bm.free()
     mesh.materials.append(mat)
-    apply_bevel(obj, 0.010)
     return bone_parent(obj, arm, bone)
 
 
+def _is_clockwise(points):
+    """Match THREE.ShapeUtils.isClockWise for a simple contour."""
+    area = 0.0
+    for i, point in enumerate(points):
+        nxt = points[(i + 1) % len(points)]
+        area += point.x * nxt.y - nxt.x * point.y
+    return area < 0.0
+
+
+def _three_bevel_vector(point, previous, following):
+    """Port ExtrudeGeometry.getBevelVec so plate outlines match Three.js."""
+    prev_x, prev_y = point.x - previous.x, point.y - previous.y
+    next_x, next_y = following.x - point.x, following.y - point.y
+    prev_len_sq = prev_x * prev_x + prev_y * prev_y
+    cross = prev_x * next_y - prev_y * next_x
+    eps = 2.220446049250313e-16
+    shrink_by = None
+    if abs(cross) > eps:
+        prev_len = math.sqrt(prev_len_sq)
+        next_len = math.sqrt(next_x * next_x + next_y * next_y)
+        prev_shift_x = previous.x - prev_y / prev_len
+        prev_shift_y = previous.y + prev_x / prev_len
+        next_shift_x = following.x - next_y / next_len
+        next_shift_y = following.y + next_x / next_len
+        factor = ((next_shift_x - prev_shift_x) * next_y - (next_shift_y - prev_shift_y) * next_x) / cross
+        trans_x = prev_shift_x + prev_x * factor - point.x
+        trans_y = prev_shift_y + prev_y * factor - point.y
+        trans_len_sq = trans_x * trans_x + trans_y * trans_y
+        if trans_len_sq <= 2.0:
+            return Vector((trans_x, trans_y))
+        shrink_by = math.sqrt(trans_len_sq / 2.0)
+    else:
+        if prev_x > eps:
+            same_direction = next_x > eps
+        elif prev_x < -eps:
+            same_direction = next_x < -eps
+        else:
+            same_direction = math.copysign(1.0, prev_y) == math.copysign(1.0, next_y)
+        if same_direction:
+            trans_x, trans_y = -prev_y, prev_x
+            shrink_by = math.sqrt(prev_len_sq)
+        else:
+            trans_x, trans_y = prev_x, prev_y
+            shrink_by = math.sqrt(prev_len_sq / 2.0)
+    return Vector((trans_x / shrink_by, trans_y / shrink_by))
+
+
 def plate(arm, bone, name, xy, thickness, z, mat, q=None):
-    points = [Vector((x, y, z - thickness * 0.5)) for x, y in xy] + [Vector((x, y, z + thickness * 0.5)) for x, y in xy]
-    n = len(xy)
-    verts = [gv(transform_local(p, GLOBAL_REST[bone], q)) for p in points]
-    faces = [tuple(range(n)), tuple(reversed(range(n, n * 2)))]
-    for i in range(n):
-        j = (i + 1) % n
-        faces.append((i, j, n + j, n + i))
+    """Recreate Three.js ExtrudeGeometry with one bevel segment and one step.
+
+    Three's plate helper uses bevelSize=.016 and bevelThickness=.010. With one
+    bevel segment that becomes four contour layers: original cap, expanded side,
+    expanded side, original cap. Keeping the same layer topology preserves both
+    the visible outline and the 6*n side triangles produced by ExtrudeGeometry.
+    """
+    bevel_size = 0.016
+    bevel_thickness = 0.010
+    contour = [Vector((x, y)) for x, y in xy]
+    if not _is_clockwise(contour):
+        contour.reverse()
+    movements = [
+        _three_bevel_vector(point, contour[i - 1], contour[(i + 1) % len(contour)])
+        for i, point in enumerate(contour)
+    ]
+    expanded = [point + movement * bevel_size for point, movement in zip(contour, movements)]
+    z_layers = (
+        z - thickness * 0.5 - bevel_thickness,
+        z - thickness * 0.5,
+        z + thickness * 0.5,
+        z + thickness * 0.5 + bevel_thickness,
+    )
+    contours = (contour, expanded, expanded, contour)
+    origin = GLOBAL_REST[bone]
+    verts = [
+        gv(transform_local(Vector((point.x, point.y, layer_z)), origin, q))
+        for points, layer_z in zip(contours, z_layers)
+        for point in points
+    ]
+    n = len(contour)
+    faces = [tuple(range(n)), tuple(reversed(range(3 * n, 4 * n)))]
+    for layer in range(3):
+        base, next_base = layer * n, (layer + 1) * n
+        for i in range(n):
+            j = (i + 1) % n
+            faces.append((base + i, base + j, next_base + j, next_base + i))
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(verts, [], faces)
     mesh.update()
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
     mesh.materials.append(mat)
+    # Closed solids let Blender correct winding consistently after the axis basis change.
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    bm.to_mesh(mesh)
+    bm.free()
     return bone_parent(obj, arm, bone)
 
 
@@ -405,9 +487,9 @@ def build_geometry(arm, mats):
         plate(arm, "Torso", f"{s} Chest intake", [(s*.15,.35),(s*.43,.40),(s*.42,.28),(s*.20,.20)], .025, .57, black)
         box(arm, "Torso", f"{s} Back engine", (s*.42,.13,-.56), (.32,.64,.37), navy)
         box(arm, "Torso", f"{s} Rear cooling fin", (s*.45,.54,-.48), (.38,.07,.54), blue)
-    box(arm, "Torso", "Back radiator recess", (0,.18,-.466), (.37,.43,.03), black, bevel=.004)
+    box(arm, "Torso", "Back radiator recess", (0,.18,-.466), (.37,.43,.03), black)
     for i in range(5):
-        box(arm, "Torso", f"Back radiator slat {i}", (0,.18+(i-2)*.43/6,-.441), (.34,.018,.04), steel, bevel=.002)
+        box(arm, "Torso", f"Back radiator slat {i}", (0,.18+(i-2)*.43/6,-.441), (.34,.018,.04), steel)
 
     rod(arm, "Head", "Neck bearing", (0,-.04,-.02), (0,.06,-.02), .13, frame)
     convex_hull(arm, "Head", "Spearhead helmet", [(0,.30,.12),(-.29,.13,-.19),(.29,.13,-.19),(-.30,.02,.16),(.30,.02,.16),(-.15,-.15,.22),(.15,-.15,.22),(0,-.075,.65),(0,.14,.47),(0,-.20,-.10)], blue)
@@ -429,7 +511,7 @@ def build_geometry(arm, mats):
         box(arm, upper, leg["id"]+" Upper spar", (0,-GAIT["upper"]/2,0), (.24,GAIT["upper"]-.10,.27), frame, q=uq)
         convex_hull(arm, upper, leg["id"]+" Long thigh blade", [(-.25,-.13,-.09),(.25,-.13,-.09),(-.38,-.47,.03),(.38,-.47,.03),(-.26,-1.20,.03),(.26,-1.20,.03),(0,-1.42,.13),(-.26,-.28,.29),(.26,-.28,.29),(0,-1.16,.33)], blue, uq)
         plate(arm, upper, leg["id"]+" Thigh inset", [(-.14,-.35),(.14,-.35),(.13,-1.01),(0,-1.20),(-.13,-1.01)], .035, .318, navy, uq)
-        box(arm, upper, leg["id"]+" Thigh marker", (.17,-.46,.335), (.055,.19,.020), white, uq, .002)
+        box(arm, upper, leg["id"]+" Thigh marker", (.17,-.46,.335), (.055,.19,.020), white, uq)
         for s in (-1, 1):
             rod(arm, upper, leg["id"]+f" {s} Hydraulic body", (s*.24,-.19,-.12), (s*.24,-.80,-.12), .067, navy, q=uq)
             rod(arm, upper, leg["id"]+f" {s} Hydraulic rod", (s*.24,-.79,-.12), (s*.24,-1.34,-.12), .033, steel, q=uq)
@@ -446,7 +528,7 @@ def build_geometry(arm, mats):
         yaw = math.atan2(leg["side"], leg["fore"])
         yq = Quaternion(Vector((0.0, 1.0, 0.0)), yaw)
         convex_hull(arm, foot, leg["id"]+" Pointed foot", [(-.19,-.16,-.19),(.19,-.16,-.19),(-.12,-.16,.43),(.12,-.16,.43),(-.17,.07,-.15),(.17,.07,-.15),(-.10,-.07,.43),(.10,-.07,.43)], blue, yq)
-        box(arm, foot, leg["id"]+" Sole", (0,-.14,.10), (.26,.04,.57), black, yq, .004)
+        box(arm, foot, leg["id"]+" Sole", (0,-.14,.10), (.26,.04,.57), black, yq)
 
     # Arms, rifle, shield and shoulder cannons.
     for label, s in (("Left", 1), ("Right", -1)):
@@ -462,8 +544,8 @@ def build_geometry(arm, mats):
         if label == "Right":
             box(arm, hand, "Rifle receiver", (0,-.07,.49), (.30,.28,.88), navy)
             convex_hull(arm, hand, "Rifle long jacket", [(-.14,-.21,.78),(.14,-.21,.78),(-.15,.08,.78),(.15,.08,.78),(-.12,-.20,2.02),(.12,-.20,2.02),(-.08,.015,2.16),(.08,.015,2.16)], frame)
-            box(arm, hand, "Rifle muzzle", (0,-.08,2.162), (.13,.095,.014), black, bevel=.002)
-            box(arm, hand, "Rifle rail", (0,.11,.66), (.07,.055,1.02), steel, bevel=.004)
+            box(arm, hand, "Rifle muzzle", (0,-.08,2.162), (.13,.095,.014), black)
+            box(arm, hand, "Rifle rail", (0,.11,.66), (.07,.055,1.02), steel)
             box(arm, hand, "Rifle magazine", (0,-.33,.44), (.22,.31,.34), frame)
         else:
             plate(arm, forearm, "Left elongated shield", [(-.17,.13),(.25,.10),(.37,-.28),(.10,-.89),(-.24,-.34)], .12, .40, navy)
@@ -479,7 +561,7 @@ def build_geometry(arm, mats):
             rod(arm, cannon, label+f" Inner barrel {i}", (x,y,1.53), (x,y,1.91), .067, steel)
             disk(arm, cannon, label+f" Bore {i}", (x,y,1.912), .045, black)
         for i in range(4):
-            box(arm, cannon, label+f" Cooling slot {i}", (0,.435,.62+i*.22), (.09,.014,.10), black, bevel=.001)
+            box(arm, cannon, label+f" Cooling slot {i}", (0,.435,.62+i*.22), (.09,.014,.10), black)
         convex_hull(arm, cannon, label+" Ammunition pod", [(-.28,-.03,-.19),(.28,-.03,-.19),(-.30,.43,-.21),(.30,.43,-.21),(-.24,.35,-.76),(.24,.35,-.76),(-.24,.02,-.78),(.24,.02,-.78)], blue)
 
     # Thrusters and effect meshes. The plume/core meshes are children of the

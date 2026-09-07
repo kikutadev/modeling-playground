@@ -5,6 +5,7 @@ import { validateBytes } from 'gltf-validator';
 import { bindAsset } from '../runtime/asset.mjs';
 import { IKPose } from '../runtime/ik.mjs';
 import { STRIX_LEGS, STRIX_SPEC } from '../models/strix-definition.mjs';
+import { createStrix } from '../models/strix.mjs';
 import { strixPose } from '../models/strix-motion.mjs';
 
 const bytes = await readFile(new URL('../output/strix.glb', import.meta.url));
@@ -70,6 +71,36 @@ for (const [name, duration] of clipDurations) {
 const ik = IKPose.fromModel(gltf.scene);
 if (!ik || ik.chains.length !== 4) {
   throw new Error('Four-leg IK metadata did not survive GLB export.');
+}
+
+// Protect visible authoring parity, not only the rig/motion contract. These are
+// the parts that exposed primitive-conversion drift during the Blender port.
+const normalizeName = (name) => name.replace(/[^A-Za-z0-9]/g, '');
+const findPart = (root, name) => {
+  const normalized = normalizeName(name);
+  let match = null;
+  root.traverse((object) => {
+    if (object.isMesh && normalizeName(object.name) === normalized) match = object;
+  });
+  if (!match) throw new Error(`Missing visual parity part: ${name}`);
+  return match;
+};
+const reference = createStrix().root;
+reference.updateMatrixWorld(true);
+gltf.scene.updateMatrixWorld(true);
+for (const name of [
+  'Armored chassis', 'Thorax keel', 'Spearhead helmet', 'Crown ridge',
+  'Left elongated shield', 'Left shield face',
+]) {
+  const expectedBox = new Box3().setFromObject(findPart(reference, name));
+  const actualBox = new Box3().setFromObject(findPart(gltf.scene, name));
+  const expectedSize = expectedBox.getSize(new Vector3());
+  const actualSize = actualBox.getSize(new Vector3());
+  const expectedCenter = expectedBox.getCenter(new Vector3());
+  const actualCenter = actualBox.getCenter(new Vector3());
+  if (expectedSize.distanceTo(actualSize) > 2e-4 || expectedCenter.distanceTo(actualCenter) > 2e-4) {
+    throw new Error(`${name}: Blender visual bounds drifted from Three.js reference`);
+  }
 }
 
 // Cross-check the Blender-baked clips against the Three.js task-space reference.
