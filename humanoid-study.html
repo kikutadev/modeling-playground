@@ -23,7 +23,12 @@
       aside { min-height:0; overflow:auto; padding:18px; border-left:1px solid #d8d8d0; background:#fafaf6; }
       section + section { margin-top:24px; padding-top:20px; border-top:1px solid #ddddD5; }
       .eyebrow { display:block; margin-bottom:8px; font-size:10px; font-weight:760; letter-spacing:.14em; color:#777a70; }
-      .clips { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+      .clips, .mode-buttons, .swing-buttons { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+      .mode-buttons button:first-child { grid-column:1 / -1; }
+      .telemetry { margin:12px 0 0; display:grid; gap:7px; }
+      .telemetry div { display:flex; justify-content:space-between; gap:16px; font-size:11px; }
+      .telemetry dt { color:#777a70; }
+      .telemetry dd { margin:0; font-variant-numeric:tabular-nums; }
       button,select,input { font:inherit; }
       button,select { min-height:38px; border:1px solid #cfd1c7; border-radius:8px; background:#fff; color:#20211d; }
       button { cursor:pointer; padding:8px 10px; }
@@ -40,12 +45,13 @@
       .meta dt { color:#777a70; }
       .meta dd { margin:0; text-align:right; }
       .help { color:#73766d; font-size:11px; line-height:1.65; }
+      .intent { margin:10px 0 0; color:#62655d; font-size:11px; line-height:1.55; min-height:34px; }
       #error { position:absolute; inset:auto 16px 16px 16px; padding:12px; border:1px solid #bc7670; border-radius:8px; background:#fff5f4; color:#842f28; font-size:12px; }
       @media (max-width:760px) {
         body { min-height:100dvh; }
         header { min-height:60px; padding:11px 14px; }
         .title p { display:none; }
-        main { grid-template-columns:1fr; grid-template-rows:minmax(54dvh,1fr) auto; }
+        main { grid-template-columns:1fr; grid-template-rows:minmax(62dvh,1fr) auto; }
         aside { border-left:0; border-top:1px solid #d8d8d0; overflow:visible; }
       }
     </style>
@@ -62,8 +68,17 @@
       </div>
       <aside>
         <section>
+          <span class="eyebrow">MODE</span>
+          <div class="mode-buttons" role="group" aria-label="プレビューモード">
+            <button id="mode-swing" aria-pressed="true">Swing Play</button>
+            <button id="mode-study" aria-pressed="false">Action Study</button>
+          </div>
+          <p id="mode-intent" class="intent">物理軌道＋Reach/Tuckブレンド＋runtime IKを連続再生します。</p>
+        </section>
+        <section id="action-section" hidden>
           <span class="eyebrow">ACTION</span>
           <div id="clips" class="clips" role="group" aria-label="アクション"></div>
+          <p id="action-intent" class="intent"></p>
           <div class="playback">
             <button id="play-pause">一時停止</button>
             <select id="speed" aria-label="再生速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select>
@@ -71,7 +86,21 @@
           <label class="timeline-label" for="timeline"><span>再生位置</span><output id="time">0.00 / 0.00 s</output></label>
           <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="再生位置" />
         </section>
-        <section>
+        <section id="swing-controls">
+          <span class="eyebrow">SWING</span>
+          <div class="swing-buttons">
+            <button id="anchor-left">アンカー ←</button>
+            <button id="anchor-right">アンカー →</button>
+            <button id="swing-reset">リセット</button>
+            <button id="swing-pause" aria-pressed="false">一時停止</button>
+          </div>
+          <dl class="telemetry">
+            <div><dt>速度</dt><dd id="swing-speed">—</dd></div>
+            <div><dt>Tuck blend</dt><dd id="swing-blend">—</dd></div>
+            <div><dt>Rope</dt><dd id="swing-rope">—</dd></div>
+          </dl>
+        </section>
+        <section id="view-section" hidden>
           <span class="eyebrow">VIEW</span>
           <div class="views" role="group" aria-label="視点">
             <button data-view="perspective" aria-pressed="true">斜め</button>
@@ -92,7 +121,7 @@
             <div><dt>Action</dt><dd id="actions">—</dd></div>
           </dl>
         </section>
-        <section class="help">ドラッグで回転、ホイール／ピンチでズームできます。これは今回生成した人型研究GLBだけを確認する専用プレビューです。</section>
+        <section id="help-text" class="help">Swing Playではカメラが自動追従します。Action Studyへ切り替えるとドラッグ回転・ズームで各Actionを確認できます。</section>
       </aside>
     </main>
     <script type="module" src="/viewer/humanoid-study.mjs"></script>

@@ -15,6 +15,15 @@ function worldPosition(scene, name) {
   return object.getWorldPosition(new Vector3());
 }
 
+function skinnedCentroid(mesh) {
+  const position = mesh.geometry.attributes.position;
+  const centroid = new Vector3();
+  for (let i = 0; i < position.count; i++) {
+    centroid.add(mesh.getVertexPosition(i, new Vector3()).applyMatrix4(mesh.matrixWorld));
+  }
+  return centroid.divideScalar(position.count);
+}
+
 test('humanoid deformation study exports the web-shooter action range as a valid GLB', async () => {
   const bytes = await readFile(new URL('../output/humanoid-deform-study.glb', import.meta.url));
   const report = await validator.validateBytes(new Uint8Array(bytes), {
@@ -39,7 +48,7 @@ test('humanoid deformation study exports the web-shooter action range as a valid
 
   const skinned = [];
   asset.scene.traverse(object => { if (object.isSkinnedMesh) skinned.push(object); });
-  assert.equal(skinned.length, 9);
+  assert.equal(skinned.length, 14);
 
   const mixer = new AnimationMixer(asset.scene);
   const sampleClip = (name, normalizedTime = .72) => {
@@ -69,6 +78,7 @@ test('humanoid deformation study exports the web-shooter action range as a valid
       rightHand: worldPosition(asset.scene, 'RightHand'),
       hips: worldPosition(asset.scene, 'Hips'),
       leftFoot: worldPosition(asset.scene, 'LeftFoot'),
+      leftArmCentroid: skinnedCentroid(asset.scene.getObjectByName('ArmLeft')),
     };
   };
 
@@ -78,6 +88,7 @@ test('humanoid deformation study exports the web-shooter action range as a valid
   const landing = sampleClip('Landing');
 
   assert.ok(reach.leftHand.distanceTo(neutral.leftHand) > .20, 'SwingReach must materially move the anchor hand');
+  assert.ok(reach.leftArmCentroid.distanceTo(neutral.leftArmCentroid) > .20, 'SwingReach must materially deform the skinned left arm, not only move its bones');
   assert.ok(tuck.leftFoot.distanceTo(neutral.leftFoot) > .15, 'SwingTuck must materially move the leg chain');
   assert.ok(landing.hips.distanceTo(neutral.hips) > .15, 'Landing must materially compress the pelvis');
 });

@@ -282,8 +282,11 @@ def create_skin_tube(
     obj.data.materials.append(material)
     obj.parent = arm
 
-    groups = {bone: obj.vertex_groups.new(name=bone)
-              for weights in ring_weights for bone in weights}
+    # Create exactly one vertex group per deform bone. Re-creating the same
+    # name makes Blender auto-suffix groups (.001, .002, ...), which silently
+    # disconnects weights from the armature bone names.
+    deform_bones = sorted({bone for weights in ring_weights for bone in weights})
+    groups = {bone: obj.vertex_groups.new(name=bone) for bone in deform_bones}
     for ring, weights in enumerate(ring_weights):
         total = sum(weights.values())
         assert total > 0
@@ -599,10 +602,13 @@ def validate(arm, meshes, actions) -> None:
     assert len(arm.data.bones) == 22
     assert {name for name, _action, _end in actions} == set(CLIP_DURATIONS)
     assert {track.name for track in arm.animation_data.nla_tracks} == set(CLIP_DURATIONS)
-    assert len(meshes) == 9, len(meshes)
+    assert len(meshes) >= 9, len(meshes)
+    deform_bones = {bone.name for bone in arm.data.bones if bone.use_deform}
     for mesh in meshes:
         assert mesh.type == "MESH"
         assert any(mod.type == "ARMATURE" and mod.object == arm for mod in mesh.modifiers)
+        group_names = {group.name for group in mesh.vertex_groups}
+        assert group_names <= deform_bones, (mesh.name, sorted(group_names - deform_bones))
         for vertex in mesh.data.vertices:
             # Every generated vertex must have normalized skinning. Blender stores
             # weights on the mesh object and the exporter normalizes as needed.

@@ -50,7 +50,7 @@ ik:
 
 # Generate the humanoid deformation/action-range study for web-swing combat.
 humanoid-study:
-    "{{blender}}" --background --python scripts/build_humanoid_deform_study.py
+    "{{blender}}" --background --python scripts/build_humanoid_action_study_v2.py
 
 # Generate the anime character with Three.js only (no Blender required).
 suzu:
