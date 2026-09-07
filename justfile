@@ -48,6 +48,10 @@ walk:
 ik:
     "{{blender}}" --background --python scripts/build_ik.py
 
+# Generate the humanoid deformation/action-range study for web-swing combat.
+humanoid-study:
+    "{{blender}}" --background --python scripts/build_humanoid_deform_study.py
+
 # Generate the anime character with Three.js only (no Blender required).
 suzu:
     node scripts/build_suzu.mjs

@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "id": "humanoid-deform-study",
+  "purpose": "web-swing, wall-contact and aerial-combat humanoid deformation study",
+  "units": "meters",
+  "coordinateSystem": "gltf-y-up",
+  "forward": "+Z",
+  "groundLevel": 0,
+  "rig": {
+    "profile": "game-humanoid-v0",
+    "bones": [
+      {
+        "name": "Root",
+        "parent": null
+      },
+      {
+        "name": "Hips",
+        "parent": "Root"
+      },
+      {
+        "name": "Spine",
+        "parent": "Hips"
+      },
+      {
+        "name": "Chest",
+        "parent": "Spine"
+      },
+      {
+        "name": "Neck",
+        "parent": "Chest"
+      },
+      {
+        "name": "Head",
+        "parent": "Neck"
+      },
+      {
+        "name": "LeftClavicle",
+        "parent": "Chest"
+      },
+      {
+        "name": "LeftUpperArm",
+        "parent": "LeftClavicle"
+      },
+      {
+        "name": "LeftForearm",
+        "parent": "LeftUpperArm"
+      },
+      {
+        "name": "LeftHand",
+        "parent": "LeftForearm"
+      },
+      {
+        "name": "RightClavicle",
+        "parent": "Chest"
+      },
+      {
+        "name": "RightUpperArm",
+        "parent": "RightClavicle"
+      },
+      {
+        "name": "RightForearm",
+        "parent": "RightUpperArm"
+      },
+      {
+        "name": "RightHand",
+        "parent": "RightForearm"
+      },
+      {
+        "name": "LeftThigh",
+        "parent": "Hips"
+      },
+      {
+        "name": "LeftShin",
+        "parent": "LeftThigh"
+      },
+      {
+        "name": "LeftFoot",
+        "parent": "LeftShin"
+      },
+      {
+        "name": "LeftToe",
+        "parent": "LeftFoot"
+      },
+      {
+        "name": "RightThigh",
+        "parent": "Hips"
+      },
+      {
+        "name": "RightShin",
+        "parent": "RightThigh"
+      },
+      {
+        "name": "RightFoot",
+        "parent": "RightShin"
+      },
+      {
+        "name": "RightToe",
+        "parent": "RightFoot"
+      }
+    ],
+    "requiredForProduction": [
+      "clavicle controls",
+      "arm and leg IK/FK",
+      "IK parent switching",
+      "toe/heel controls",
+      "upper-arm/forearm twist distribution",
+      "upper-body aim layer",
+      "web anchor hand-space sockets"
+    ]
+  },
+  "sockets": [
+    {
+      "id": "web-left",
+      "bone": "LeftHand",
+      "purpose": "web emitter / hand anchor"
+    },
+    {
+      "id": "web-right",
+      "bone": "RightHand",
+      "purpose": "web emitter / hand anchor"
+    },
+    {
+      "id": "aim",
+      "bone": "Head",
+      "purpose": "camera/aim reference"
+    },
+    {
+      "id": "foot-left",
+      "bone": "LeftFoot",
+      "purpose": "wall/ground contact"
+    },
+    {
+      "id": "foot-right",
+      "bone": "RightFoot",
+      "purpose": "wall/ground contact"
+    },
+    {
+      "id": "center-mass",
+      "bone": "Hips",
+      "purpose": "swing physics visual alignment"
+    }
+  ],
+  "clips": [
+    {
+      "name": "Neutral",
+      "duration": 1.0,
+      "fps": 30,
+      "mode": "repeat",
+      "intent": "baseline/rest deformation"
+    },
+    {
+      "name": "SwingReach",
+      "duration": 1.2,
+      "fps": 30,
+      "mode": "once",
+      "intent": "one-arm anchor reach with long-body extension"
+    },
+    {
+      "name": "SwingTuck",
+      "duration": 1.2,
+      "fps": 30,
+      "mode": "once",
+      "intent": "compressed swing phase; extreme hips/knees/shoulder"
+    },
+    {
+      "name": "WallRun",
+      "duration": 1.0,
+      "fps": 30,
+      "mode": "repeat",
+      "intent": "asymmetric wall locomotion silhouette"
+    },
+    {
+      "name": "AerialAim",
+      "duration": 1.0,
+      "fps": 30,
+      "mode": "once",
+      "intent": "airborne upper-body aim while lower body remains free"
+    },
+    {
+      "name": "AirKick",
+      "duration": 0.9,
+      "fps": 30,
+      "mode": "once",
+      "intent": "fast aerial melee extension and counter-rotation"
+    },
+    {
+      "name": "Landing",
+      "duration": 1.0,
+      "fps": 30,
+      "mode": "once",
+      "intent": "deep three-point-style landing/crouch range"
+    }
+  ]
+}
