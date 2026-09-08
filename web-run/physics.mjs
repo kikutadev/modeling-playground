@@ -93,11 +93,11 @@ export class SwingBody {
     this.time=0; this.releaseTime=-10; this.landTime=-10; this.dodgeTime=-10;
     this.lastBuildingId=null; this.outOfBounds=false;this.lastWallTime=-10;this.lastWallNormal=null;
     this.attaches=0; this.releases=0; this.maxSpeed=0; this.distance=0;
-    this.zipTime=-10;this.assistedReleaseTime=-10;
+    this.zipTime=-10;this.assistedReleaseTime=-10;this.releaseAssist=null;
   }
   attach(target, options={}) {
     if(!target) return false;
-    this.anchor={point:target.point.clone(),buildingId:target.buildingId};
+    this.anchor={point:target.point.clone(),buildingId:target.buildingId};this.releaseAssist=null;
     const preload=clamp(options.preload??0,0,.18);
     this.ropeLength=this.position.distanceTo(target.point)*(1-preload);
     this.webHand=this.attaches%2; this.attachTime=this.time; this.attaches++; return true;

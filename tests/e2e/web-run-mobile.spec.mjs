@@ -58,6 +58,8 @@ test('portrait traversal is two-thumb first and keeps contextual actions out of 
   await page.mouse.up();
   await expect(web).toHaveAttribute('aria-pressed','false');
   await expect.poll(async()=>Number((await readState(page)).attached),{timeout:20_000}).toBe(0);
+  const releaseStarted=await readState(page);
+  await expect.poll(async()=>Number((await readState(page)).time>releaseStarted.time+.18),{timeout:30_000}).toBe(1);
   const released=await readState(page);
   expect(released.velocity[1]).toBeGreaterThan(2);
 

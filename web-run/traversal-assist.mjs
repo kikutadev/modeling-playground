@@ -13,6 +13,8 @@ export const DEFAULT_TRAVERSAL_TUNING = Object.freeze({
   risingLift: 5,
   releaseBoost: 5.5,
   releaseMinimumUp: 7,
+  releaseAssistDuration: 0.16,
+  maxTraversalSpeed: 58,
   attachPreload: 0.075,
   idealRopeLength: 42,
   zipSpeed: 36,
@@ -87,9 +89,36 @@ export function releaseWithAssist(body, desiredDirection, tuning = DEFAULT_TRAVE
   launchDirection.lerp(desired, 0.38).normalize();
 
   body.release();
-  body.velocity.addScaledVector(launchDirection, tuning.releaseBoost);
-  body.velocity.y = Math.max(body.velocity.y, tuning.releaseMinimumUp);
+  // Keep velocity continuous at the release frame. The assist is delivered over a short
+  // post-release window so the trajectory bends naturally instead of kinking instantly.
+  body.releaseAssist={direction:launchDirection.clone(),remaining:tuning.releaseAssistDuration,duration:tuning.releaseAssistDuration,startUp:body.velocity.y,targetUp:Math.max(body.velocity.y,tuning.releaseMinimumUp),appliedForward:0};
   body.assistedReleaseTime = body.time;
+  return true;
+}
+
+export function applyReleaseAssist(body, dt, tuning = DEFAULT_TRAVERSAL_TUNING) {
+  const assist=body.releaseAssist;
+  if(!assist)return false;
+  if(body.anchor||body.grounded||assist.remaining<=0){body.releaseAssist=null;return false;}
+  const slice=Math.min(dt,assist.remaining);
+  const duration=Math.max(assist.duration||tuning.releaseAssistDuration,1e-4);
+  const nextRemaining=Math.max(0,assist.remaining-slice);
+  const progress=1-nextRemaining/duration;
+  const eased=progress*progress*(3-2*progress);
+
+  // Apply only the incremental part of the eased impulse, keeping velocity continuous.
+  const desiredForward=tuning.releaseBoost*eased;
+  body.velocity.addScaledVector(assist.direction,desiredForward-assist.appliedForward);
+  assist.appliedForward=desiredForward;
+
+  // Follow the same eased curve vertically. Gravity still acts every physics step, but the
+  // release envelope reaches its target exactly at the end instead of snapping on frame one.
+  const desiredUp=assist.startUp+(assist.targetUp-assist.startUp)*eased;
+  if(body.velocity.y<desiredUp)body.velocity.y=desiredUp;
+  if(body.velocity.length()>tuning.maxTraversalSpeed)body.velocity.setLength(tuning.maxTraversalSpeed);
+
+  assist.remaining=nextRemaining;
+  if(assist.remaining<=1e-6)body.releaseAssist=null;
   return true;
 }
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Vector3} from 'three';
 import {SwingBody,STEP} from '../web-run/physics.mjs';
-import {applySwingAssist,releaseWithAssist,performWebZip,DEFAULT_TRAVERSAL_TUNING} from '../web-run/traversal-assist.mjs';
+import {applySwingAssist,applyReleaseAssist,releaseWithAssist,performWebZip,DEFAULT_TRAVERSAL_TUNING} from '../web-run/traversal-assist.mjs';
 
 const FORWARD=new Vector3(0,0,-1);
 
@@ -21,12 +21,15 @@ test('assisted release preserves continuity but guarantees a useful upward launc
   const body=new SwingBody([]);
   body.position.set(0,22,0);body.velocity.set(3,-8,-24);
   body.attach({point:new Vector3(16,52,-24),buildingId:2});
-  const speedBefore=body.velocity.length();
+  const before=body.velocity.clone(),speedBefore=body.velocity.length();
   assert.equal(releaseWithAssist(body,FORWARD),true);
   assert.equal(body.anchor,null);
-  assert.ok(body.velocity.y>=DEFAULT_TRAVERSAL_TUNING.releaseMinimumUp);
-  assert.ok(body.velocity.length()>speedBefore);
+  assert.deepEqual(body.velocity,before);
   assert.equal(body.assistedReleaseTime,body.time);
+  for(let elapsed=0;elapsed<DEFAULT_TRAVERSAL_TUNING.releaseAssistDuration;elapsed+=STEP){body.step(STEP);applyReleaseAssist(body,STEP);}
+  assert.ok(body.velocity.y>=DEFAULT_TRAVERSAL_TUNING.releaseMinimumUp-.05);
+  assert.ok(body.velocity.length()>speedBefore);
+  assert.equal(body.releaseAssist,null);
 });
 
 test('web zip bridges free flight and respects its cooldown',()=>{

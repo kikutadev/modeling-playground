@@ -1,6 +1,6 @@
 import * as T from 'three';
 import {SwingBody,makeCity,chooseAnchor,segmentHit,STEP} from './physics.mjs';
-import {applySwingAssist,releaseWithAssist,performWebZip,shouldAutoReel,DEFAULT_TRAVERSAL_TUNING} from './traversal-assist.mjs';
+import {applySwingAssist,applyReleaseAssist,releaseWithAssist,performWebZip,shouldAutoReel,DEFAULT_TRAVERSAL_TUNING} from './traversal-assist.mjs';
 import {createHero} from './hero.mjs';
 import {AirCombat} from './combat.mjs';
 import {RING_POINTS,crossesRing} from './course.mjs';
@@ -220,6 +220,7 @@ function step(){
   const assistState=applySwingAssist(body,STEP,{desiredDirection:forward,throttle},traversalTuning);
   const dive=keys.has('ShiftLeft')||keys.has('ShiftRight')||(touchCapable&&!body.grounded&&mobileMove.y>.78);
   body.step(STEP,{steer,forward:keys.has('KeyW')||mobileMove.y<-.18,dive,reel:keys.has('KeyE')||shouldAutoReel(body,assistState)});
+  applyReleaseAssist(body,STEP,traversalTuning);
   const webHeld=keys.has('Space')||mouseSwing||mobileWebHeld;
   const attachAge=body.anchor?body.time-body.attachTime:0;
   if(body.anchor&&webHeld&&attachAge>.72&&(body.velocity.y>7||attachAge>2.15)){releaseWeb();nextAutoAttach=body.time+.20;}

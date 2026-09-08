@@ -19,6 +19,8 @@ test('production traversal keeps useful energy through swing, release and zip',a
 
   await page.keyboard.up('Space');
   await expect.poll(async()=>Number((await state(page)).attached),{timeout:20_000}).toBe(0);
+  const releaseStarted=await state(page);
+  await expect.poll(async()=>Number((await state(page)).time>releaseStarted.time+.18),{timeout:20_000}).toBe(1);
   const released=await state(page),releaseSpeed=magnitude(released.velocity);
   expect(released.velocity[1]).toBeGreaterThan(4.5);
   expect(releaseSpeed).toBeGreaterThan(swingSpeed*.72);
