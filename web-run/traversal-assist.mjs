@@ -11,6 +11,11 @@ export const DEFAULT_TRAVERSAL_TUNING = Object.freeze({
   bottomPump: 15,
   lowAltitudeLift: 24,
   risingLift: 5,
+  // Turning is intentionally game-like: preserve speed, rotate travel intent instead of asking
+  // a 40 m/s body to carve a huge physically-correct radius through the city.
+  swingTurnRate: 2.1,
+  airTurnRate: 2.7,
+  turnDeadzone: 0.10,
   releaseBoost: 5.5,
   releaseMinimumUp: 7,
   releaseAssistDuration: 0.16,
@@ -28,6 +33,41 @@ function planarDirection(vector, fallback) {
   if (result.lengthSq() < 1e-6) result.copy(fallback).setY(0);
   if (result.lengthSq() < 1e-6) result.set(0, 0, -1);
   return result.normalize();
+}
+
+/**
+ * Rotates horizontal momentum toward player intent without changing its magnitude.
+ * This is the missing counterpart to swing-speed assistance: high speed stays exciting,
+ * but it no longer makes the character feel like a truck with a 100 m turning radius.
+ */
+export function applyTurnAssist(body, dt, intent, tuning = DEFAULT_TRAVERSAL_TUNING) {
+  if (body.grounded || body.wall) return false;
+  const rawTurn = Math.abs(intent?.turnIntent ?? 0);
+  if (rawTurn <= tuning.turnDeadzone) return false;
+
+  const horizontal = body.velocity.clone().setY(0);
+  const horizontalSpeed = horizontal.length();
+  if (horizontalSpeed < 4) return false;
+
+  const desired = planarDirection(intent?.desiredDirection ?? body.velocity, body.velocity);
+  const current = horizontal.divideScalar(horizontalSpeed);
+  const dot = clamp(current.dot(desired), -1, 1);
+  const angle = Math.acos(dot);
+  if (angle < 1e-4) return false;
+
+  const authority = clamp((rawTurn - tuning.turnDeadzone) / (1 - tuning.turnDeadzone), 0, 1);
+  const rate = body.anchor ? tuning.swingTurnRate : tuning.airTurnRate;
+  const stepAngle = Math.min(angle, rate * authority * dt);
+  const crossY = current.x * desired.z - current.z * desired.x;
+  const sign = crossY > 0 ? 1 : -1;
+  const theta = stepAngle * sign;
+  const cos = Math.cos(theta), sin = Math.sin(theta);
+  const x = current.x * cos - current.z * sin;
+  const z = current.x * sin + current.z * cos;
+
+  body.velocity.x = x * horizontalSpeed;
+  body.velocity.z = z * horizontalSpeed;
+  return true;
 }
 
 /**

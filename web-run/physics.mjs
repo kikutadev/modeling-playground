@@ -78,7 +78,9 @@ export function chooseAnchor(position, forward, buildings, previousBuildingId=nu
       const distanceQuality=1-clamp(Math.abs(distance-idealRopeLength)/Math.max(idealRopeLength,1),0,1);
       const side=planar.dot(desiredRight);
       const velocityAlignment=velocity&&velocity.lengthSq()>1e-6?planar.dot(velocity.clone().setY(0).normalize()):0;
-      const score=alignment*1.75+distanceQuality*.72+d.y/distance*.5+side*lateralIntent*.38+velocityAlignment*.28-(b.id===previousBuildingId ? .24:0);
+      const turning=Math.abs(lateralIntent);
+      const velocityWeight=.28*(1-turning*.88);
+      const score=alignment*1.75+distanceQuality*.72+d.y/distance*.5+side*lateralIntent*.95+velocityAlignment*velocityWeight-(b.id===previousBuildingId ? .24:0);
       if(score>bestScore) {bestScore=score;best={point:p,buildingId:b.id,score};}
     }
   }

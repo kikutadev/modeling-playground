@@ -1,6 +1,6 @@
 import * as T from 'three';
 import {SwingBody,makeCity,chooseAnchor,segmentHit,STEP} from './physics.mjs';
-import {applySwingAssist,applyReleaseAssist,releaseWithAssist,performWebZip,shouldAutoReel,DEFAULT_TRAVERSAL_TUNING} from './traversal-assist.mjs';
+import {applySwingAssist,applyTurnAssist,applyReleaseAssist,releaseWithAssist,performWebZip,shouldAutoReel,DEFAULT_TRAVERSAL_TUNING} from './traversal-assist.mjs';
 import {createHero} from './hero.mjs';
 import {AirCombat} from './combat.mjs';
 import {RING_POINTS,crossesRing} from './course.mjs';
@@ -217,7 +217,9 @@ function step(){
   const steer=new T.Vector3().addScaledVector(forward,moveForward).addScaledVector(right,moveRight);
   const before=body.position.clone();
   const throttle=Math.max(.25,Math.min(1,Math.max(0,moveForward)));
+  const turnIntent=touchCapable?Math.abs(mobileMove.x):Math.min(1,Math.abs(moveRight));
   const assistState=applySwingAssist(body,STEP,{desiredDirection:forward,throttle},traversalTuning);
+  applyTurnAssist(body,STEP,{desiredDirection:forward,turnIntent},traversalTuning);
   const dive=keys.has('ShiftLeft')||keys.has('ShiftRight')||(touchCapable&&!body.grounded&&mobileMove.y>.78);
   body.step(STEP,{steer,forward:keys.has('KeyW')||mobileMove.y<-.18,dive,reel:keys.has('KeyE')||shouldAutoReel(body,assistState)});
   applyReleaseAssist(body,STEP,traversalTuning);

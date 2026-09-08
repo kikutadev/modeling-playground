@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Vector3} from 'three';
 import {SwingBody,STEP} from '../web-run/physics.mjs';
-import {applySwingAssist,applyReleaseAssist,releaseWithAssist,performWebZip,DEFAULT_TRAVERSAL_TUNING} from '../web-run/traversal-assist.mjs';
+import {applySwingAssist,applyTurnAssist,applyReleaseAssist,releaseWithAssist,performWebZip,DEFAULT_TRAVERSAL_TUNING} from '../web-run/traversal-assist.mjs';
 
 const FORWARD=new Vector3(0,0,-1);
 
@@ -15,6 +15,19 @@ test('swing assist adds tangential energy without moving the body directly',()=>
   assert.equal(state.assisted,true);
   assert.deepEqual(body.position,beforePosition);
   assert.ok(body.velocity.dot(FORWARD)>beforeForward);
+});
+
+
+test('turn assist bends high-speed free flight toward intent without bleeding speed',()=>{
+  const body=new SwingBody([]);
+  body.position.set(0,20,0);body.velocity.set(0,4,-40);body.grounded=false;
+  const beforeHorizontal=Math.hypot(body.velocity.x,body.velocity.z),beforeY=body.velocity.y;
+  const desired=new Vector3(1,0,0);
+  for(let i=0;i<24;i++)assert.equal(applyTurnAssist(body,STEP,{desiredDirection:desired,turnIntent:1}),true);
+  const afterHorizontal=Math.hypot(body.velocity.x,body.velocity.z);
+  assert.ok(body.velocity.x>15,'horizontal momentum should visibly turn toward input');
+  assert.ok(Math.abs(afterHorizontal-beforeHorizontal)<1e-6,'turn assist must preserve horizontal speed');
+  assert.equal(body.velocity.y,beforeY,'turn assist must not alter vertical momentum');
 });
 
 test('assisted release preserves continuity but guarantees a useful upward launch',()=>{
