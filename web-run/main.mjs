@@ -114,9 +114,9 @@ function updateRings(){rings.forEach((ring,index)=>{ring.visible=index>=checkpoi
 function setPause(value){
   paused=value;keys.clear();mouseSwing=false;drag=false;resetTouchState();$('#overlay').hidden=!value;
   if(value&&started&&!failed){
-    $('.intro h1').innerHTML='ひと息、つこう。';
-    $('.intro>p:not(.eyebrow)').textContent=touchCapable?'左親指で行きたい方向を示し、右のWEBを押して離す。巻上げ・アンカー選択・カメラはゲーム側が補助します。':'Spaceでスイング、XでWeb Zip。Wで進み続ければ壁では自動的に駆け上がります。';
-    $('#start').innerHTML='街へ戻る <span>↗</span>';
+    $('.intro h1').textContent='一時停止';
+    $('.intro>p:not(.eyebrow)').textContent='その位置から再開できます。';
+    $('#start').innerHTML='再開 <span>↗</span>';
   }
 }
 $('#start').addEventListener('click',()=>{if(!started||failed){started=true;restart();}setPause(false);canvas.focus();initAudio();});
@@ -166,7 +166,16 @@ function releaseMobileWeb(event){if(!mobileWebHeld)return;mobileWebHeld=false;co
 $('#mobile-web').addEventListener('pointerup',releaseMobileWeb);$('#mobile-web').addEventListener('pointercancel',releaseMobileWeb);
 $('#mobile-context')?.addEventListener('click',event=>{event.preventDefault();if(!paused){initAudio();runContextAction();}});
 $('#mobile-dodge')?.addEventListener('click',event=>{event.preventDefault();if(!paused){initAudio();body.dodge(right.clone().multiplyScalar(mobileMove.x<-.15?-1:1));updateContextUI();}});
-window.addEventListener('blur',()=>{if(started)setPause(true);drag=false;});document.addEventListener('visibilitychange',()=>{if(document.hidden&&started)setPause(true);});
+window.addEventListener('blur',()=>{
+  const hadDesktopWebInput=!touchCapable&&(mouseSwing||keys.has('Space'));
+  keys.clear();mouseSwing=false;drag=false;
+  if(hadDesktopWebInput&&!paused&&body.anchor)releaseWeb();
+});
+document.addEventListener('visibilitychange',()=>{
+  // Mobile browsers can transiently report visibility/focus changes during normal touch UI.
+  // Never interrupt touch traversal; rAF is suspended by the browser while actually hidden.
+  if(document.hidden&&started&&!touchCapable)setPause(true);
+});
 
 let audioCtx=null;
 function initAudio(){try{audioCtx??=new AudioContext();audioCtx.resume();}catch{}}

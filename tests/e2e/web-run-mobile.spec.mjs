@@ -34,6 +34,11 @@ test('portrait traversal is two-thumb first and keeps contextual actions out of 
   await page.getByRole('button',{name:'屋上から飛び出す ↗'}).tap();
   await expect(page.locator('#overlay')).toBeHidden();
 
+  // Mobile focus changes must never interrupt active traversal with an automatic pause overlay.
+  await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
+  expect((await readState(page)).paused).toBe(false);
+  await expect(page.locator('#overlay')).toBeHidden();
+
   // Left thumb expresses travel intent; the stick returns to neutral when released.
   const stick=page.locator('#move-stick'),stickBox=await stick.boundingBox();
   if(!stickBox)throw new Error('move stick missing');
