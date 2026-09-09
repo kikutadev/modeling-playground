@@ -289,5 +289,18 @@ function render(now){
 }
 requestAnimationFrame(render);
 
-export function readPlayState(){return {position:body.position.toArray(),velocity:body.velocity.toArray(),yaw,time:body.time,attached:!!body.anchor,anchorKind:body.anchor?.kind??null,anchorEnemyId:body.anchor?.enemyId??null,anchorPoint:body.anchor?.point?.toArray?.()??null,titans:combat.drones.map(d=>({id:d.id,position:d.position.toArray(),hp:d.hp})),grounded:body.grounded,wall:!!body.wall,checkpoint,health:combat.health,defeated:combat.defeated,finished,failed,paused,zipTime:body.zipTime,landingType:body.landingType,landingUntil:body.landingUntil};}
-if(new URLSearchParams(location.search).has('e2e'))globalThis.__threadlineReadState=readPlayState;
+export function readPlayState(){return {position:body.position.toArray(),velocity:body.velocity.toArray(),yaw,time:body.time,attached:!!body.anchor,anchorKind:body.anchor?.kind??null,anchorEnemyId:body.anchor?.enemyId??null,anchorPoint:body.anchor?.point?.toArray?.()??null,titans:combat.drones.map(d=>({id:d.id,position:d.position.toArray(),hp:d.hp})),grounded:body.grounded,wall:!!body.wall,wallJumpTime:body.wallJumpTime,wallJumpFacing:body.wallJumpFacing.toArray(),checkpoint,health:combat.health,defeated:combat.defeated,finished,failed,paused,zipTime:body.zipTime,landingType:body.landingType,landingUntil:body.landingUntil};}
+const e2eParams=new URLSearchParams(location.search);
+if(e2eParams.has('e2e')){
+  globalThis.__threadlineReadState=readPlayState;
+  globalThis.__threadlineE2E={
+    placeForWallKick(){
+      const wallBuilding=buildings.find(b=>b.kind!=='atrium'&&b.x<0&&Math.abs(b.z)<120);
+      if(!wallBuilding)throw new Error('No wall-kick fixture building');
+      body.release();body.position.set(wallBuilding.box.max.x+1.0,20,wallBuilding.z);body.velocity.set(-42,0,-22);
+      body.grounded=false;body.wall=null;body.lastWallTime=-10;body.lastWallNormal=null;body.lastWallImpactVelocity=null;body.wallJumpTime=-10;
+      yaw=0;pitch=.13;direction();snapCamera();
+      return {buildingId:wallBuilding.id,position:body.position.toArray(),velocity:body.velocity.toArray()};
+    }
+  };
+}

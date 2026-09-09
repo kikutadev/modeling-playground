@@ -100,7 +100,7 @@ export class SwingBody {
     this.anchor=null; this.webHand=0; this.ropeLength=0; this.grounded=false; this.wall=null;
     this.time=0; this.releaseTime=-10; this.landTime=-10; this.dodgeTime=-10;
     this.lastBuildingId=null; this.outOfBounds=false;this.lastWallTime=-10;this.lastWallNormal=null;
-    this.wallJumpTime=-10;this.wallJumpFacing=new Vector3(0,0,-1);
+    this.wallJumpTime=-10;this.wallJumpFacing=new Vector3(0,0,-1);this.lastWallImpactVelocity=null;
     this.attaches=0; this.releases=0; this.maxSpeed=0; this.distance=0;
     this.zipTime=-10;this.assistedReleaseTime=-10;this.releaseAssist=null;
     this.landingType='none';this.landingStart=-10;this.landingUntil=-10;this.landingSpeed=0;this.landingImpact=0;this.wasBraking=false;
@@ -127,13 +127,17 @@ export class SwingBody {
       const inward=desired.dot(normal);
       if(inward<0)desired.addScaledVector(normal,-inward);
       if(desired.lengthSq()>1e-8)desired.normalize();else desired.copy(normal);
-      const launch=normal.clone().multiplyScalar(.68).addScaledVector(desired,.82).normalize();
-      const carry=this.velocity.clone().setY(0).multiplyScalar(.22);
+      // Keep the kick mostly in the player's intended heading. The wall normal is only
+      // a clearance component; it must not turn a forward jump into a sideways bounce.
+      const launch=desired.clone().multiplyScalar(.95).addScaledVector(normal,.31).normalize();
+      const incoming=this.lastWallImpactVelocity??this.velocity;
+      const incomingHorizontalSpeed=Math.hypot(incoming.x,incoming.z);
+      const launchSpeed=clamp(Math.max(22,incomingHorizontalSpeed*.78),22,36);
       this.release();
-      this.velocity.copy(carry).addScaledVector(launch,19);
+      this.velocity.copy(launch).multiplyScalar(launchSpeed);
       this.velocity.y=16;
       this.wallJumpTime=this.time;this.wallJumpFacing.copy(launch);
-      this.wall=null;this.lastWallTime=-10;this.landingType='none';
+      this.wall=null;this.lastWallTime=-10;this.lastWallImpactVelocity=null;this.landingType='none';
     } else if(this.grounded) {
       this.velocity.y=16; this.velocity.addScaledVector(forward,7); this.grounded=false;this.landingType='none';
     }
@@ -206,7 +210,7 @@ export class SwingBody {
       this.position[axis]=edge+sign*.001;
       if(v[axis]*sign<0) v[axis]=0;
       if(axis==='y' && sign===1) this.grounded=true;
-      else if(axis!=='y') { this.wall=new Vector3();this.wall[axis]=sign; }
+      else if(axis!=='y') { this.wall=new Vector3();this.wall[axis]=sign;this.lastWallImpactVelocity=impactVelocity.clone(); }
     }
     if(!this.wall && !this.grounded) {
       for(const b of this.buildings) {

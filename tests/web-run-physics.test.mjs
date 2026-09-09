@@ -44,6 +44,28 @@ test('wall kick keeps an outward escape component while following the aimed head
  assert.ok(body.velocity.z<0,'Aim direction must shape the launch instead of a pure normal bounce');
  assert.ok(body.velocity.y>0);assert.equal(body.wallJumpTime,jumpAt);
  assert.ok(body.wallJumpFacing.x<0&&body.wallJumpFacing.z<0);
+ const planar=body.velocity.clone().setY(0),desired=new Vector3(0,0,-1);
+ const angle=Math.acos(Math.max(-1,Math.min(1,planar.clone().normalize().dot(desired))))*180/Math.PI;
+ assert.ok(angle<22,`wall kick diverged ${angle.toFixed(1)}° from player heading`);
+});
+
+test('wall kick keeps momentum and stays on a clean post-jump trajectory for 0.6 seconds',()=>{
+ const city=makeCity(),body=new SwingBody(city),b=city.find(x=>x.kind!=='atrium'&&x.x<0);
+ const desired=new Vector3(0,0,-1);
+ body.position.set(b.box.max.x+1,20,b.z);body.velocity.set(-42,0,-22);
+ const incomingHorizontal=Math.hypot(body.velocity.x,body.velocity.z);
+ let kicked=false,kickPosition=null;
+ for(let i=0;i<30&&!kicked;i++){const hadWall=!!body.wall;body.step(STEP,{steer:desired,forward:true,moveMagnitude:1});if(kickFreshWallContact(body,hadWall,desired)){kicked=true;kickPosition=body.position.clone();}}
+ assert.ok(kicked,'expected production fresh-wall auto kick');
+ const launchHorizontal=Math.hypot(body.velocity.x,body.velocity.z);
+ assert.ok(launchHorizontal>=incomingHorizontal*.70,`kick bled too much speed: ${launchHorizontal.toFixed(1)} from ${incomingHorizontal.toFixed(1)}`);
+ const normal=body.wallJumpFacing.clone().setY(0);
+ assert.ok(normal.dot(desired)>.90,'launch heading should remain close to intended forward direction');
+ for(let i=0;i<Math.round(.6/STEP);i++)body.step(STEP,{steer:desired,forward:true,moveMagnitude:1});
+ assert.equal(body.wall,null,'post-jump path must not immediately stick to a facade again');
+ assert.equal(body.grounded,false);
+ assert.ok(body.position.z<kickPosition.z-12,'post-jump path should keep meaningful forward progress');
+ assert.ok(Math.abs(body.position.x-kickPosition.x)<12,'wall clearance must not become a large sideways throw');
 });
 
 test('landing chooses roll, skid and stick from impact plus stop intent',()=>{

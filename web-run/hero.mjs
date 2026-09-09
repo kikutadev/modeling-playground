@@ -50,12 +50,13 @@ export function createHero(){
   return {root,handWorld,shotHandWorld,update(body,forward,dt,combat=null){
     root.position.copy(body.position);
     const velocity=body.velocity,speed=velocity.length(),wall=body.wall&&!body.grounded;
-    const facing=wall?body.wall.clone().negate():combat?.kickTarget!==null&&combat?.aimPoint?combat.aimPoint.clone().sub(body.position).setY(0).normalize():forward;
+    const wallJumpAge=body.time-(body.wallJumpTime??-10);
+    const wallJumpFacingActive=wallJumpAge>=0&&wallJumpAge<.30;
+    const facing=wall?body.wall.clone().negate():wallJumpFacingActive?body.wallJumpFacing:combat?.kickTarget!==null&&combat?.aimPoint?combat.aimPoint.clone().sub(body.position).setY(0).normalize():forward;
     const desired=Math.atan2(-facing.x,-facing.z);
     yaw+=Math.atan2(Math.sin(desired-yaw),Math.cos(desired-yaw))*Math.min(1,dt*12);
     const swinging=!!body.anchor;
     const kick=combat&&combat.time-combat.kickAt<.5;
-    const wallJumpAge=body.time-(body.wallJumpTime??-10);
     const wallJump=wallJumpAge>=0&&wallJumpAge<.38?1-T.MathUtils.smoothstep(wallJumpAge,.03,.36):0;
     const releaseAge=body.time-body.releaseTime;
     const release=releaseAge>=0&&releaseAge<.55?1-T.MathUtils.smoothstep(releaseAge,.02,.48):0;
