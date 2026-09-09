@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Vector3,Box3} from 'three';
-import {AirCombat} from '../web-run/combat.mjs';
+import {AirCombat,DRONE_SPAWNS,DRONE_HIT_RADIUS} from '../web-run/combat.mjs';
 import {SwingBody,STEP,makeCity,chooseAnchor,segmentHit} from '../web-run/physics.mjs';
 import {solveLimb} from '../web-run/hero.mjs';
 const forward=new Vector3(0,0,-1);
-function setup(buildings=[]){const body=new SwingBody(buildings);body.position.set(0,24,-43);body.velocity.set(0,0,0);return {body,combat:new AirCombat(buildings)};}
+function setup(buildings=[]){const body=new SwingBody(buildings);body.position.set(0,24,-43);body.velocity.set(0,0,0);const combat=new AirCombat(buildings);combat.drones[0].home.set(0,24,-73);combat.drones[0].position.copy(combat.drones[0].home);return {body,combat};}
 function tick(combat,body,seconds){for(let i=0;i<seconds/STEP;i++){body.time+=STEP;combat.step(STEP,body);}}
 
 test('web shots stop a drone and three hits destroy it',()=>{
@@ -55,11 +55,17 @@ test('limb IK keeps both segments at their defined lengths across extreme target
  }
 });
 
-test('large drone silhouette has a forgiving matching web-hit volume',()=>{
+test('giant titan silhouette has a forgiving matching web-hit volume',()=>{
  const {body,combat}=setup();
  combat.drones.forEach((d,i)=>{if(i)d.hp=0;});
  combat.drones[0].position.set(3,24,-66);combat.drones[0].home.copy(combat.drones[0].position);
  combat.projectiles.push({kind:'web',position:new Vector3(0,24,-60),velocity:new Vector3(0,0,-120),life:1});
  combat.step(.1,body);
  assert.equal(combat.drones[0].hp,2);
+});
+
+test('production titan spawns and hit volume match the 60m-class enemy scale',()=>{
+ assert.ok(DRONE_SPAWNS[0][1]>=58);
+ assert.ok(DRONE_SPAWNS[2][1]>=70);
+ assert.ok(DRONE_HIT_RADIUS>=10);
 });

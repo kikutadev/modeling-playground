@@ -52,13 +52,13 @@ export function createCombatView(scene,combat){
         // Blender asset faces -Z after glTF conversion; rotate the whole titan toward the hero.
         v.root.rotation.y=Math.atan2(body.position.x-d.position.x,body.position.z-d.position.z);
         v.root.rotation.z=Math.sin(combat.time*1.4+i)*.018;
-        v.root.position.y+=Math.sin(combat.time*.8+i)*.32;
+        v.root.position.y+=Math.sin(combat.time*.55+i)*1.1;
         if(v.head)v.head.rotation.y=Math.sin(combat.time*.45+i)*.08;
         if(v.leftArm&&v.rightArm){
-          const recoil=Math.max(0,d.charge-.82)*.16;
+          const recoil=Math.max(0,d.charge-.82)*.10;
           v.leftArm.rotation.x=-recoil;v.rightArm.rotation.x=-recoil;
         }
-        for(const thruster of [v.leftThruster,v.rightThruster])if(thruster)thruster.rotation.z+=dt*.35;
+        for(const thruster of [v.leftThruster,v.rightThruster])if(thruster)thruster.rotation.z+=dt*.12;
         if(v.core?.material){
           const hot=d.charge>.8||d.stunUntil>combat.time;
           if(v.core.material.emissive)v.core.material.emissive.setHex(hot?0xffffff:0xffb53d);
@@ -68,7 +68,7 @@ export function createCombatView(scene,combat){
         if(d.chargeAim){const a=v.laser.geometry.attributes.position;a.setXYZ(0,...d.position.toArray());a.setXYZ(1,...d.chargeAim.toArray());a.needsUpdate=true;v.laser.material.opacity=.18+d.charge*.52;}
       });
       projectiles.forEach((mesh,i)=>{const p=combat.projectiles[i];mesh.visible=!!p;if(!p)return;mesh.position.copy(p.position);mesh.material=p.kind==='web'?webMat:boltMat;mesh.scale.setScalar(p.kind==='web'?.24:.38);});
-      for(let i=flashes.length-1;i>=0;i--){const f=flashes[i];f.age+=dt;f.mesh.scale.setScalar(1+f.age*16);f.mesh.rotation.y+=dt*5;f.mesh.material.opacity=Math.max(0,1-f.age/f.duration);if(f.age>f.duration){scene.remove(f.mesh);f.mesh.geometry.dispose();f.mesh.material.dispose();flashes.splice(i,1);}}
+      for(let i=flashes.length-1;i>=0;i--){const f=flashes[i];f.age+=dt;f.mesh.scale.setScalar(2+f.age*34);f.mesh.rotation.y+=dt*5;f.mesh.material.opacity=Math.max(0,1-f.age/f.duration);if(f.age>f.duration){scene.remove(f.mesh);f.mesh.geometry.dispose();f.mesh.material.dispose();flashes.splice(i,1);}}
     },
     reset(){for(const f of flashes){scene.remove(f.mesh);f.mesh.geometry.dispose();f.mesh.material.dispose();}flashes.length=0;}
   };

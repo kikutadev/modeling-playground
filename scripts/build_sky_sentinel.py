@@ -1,4 +1,4 @@
-"""Generate Sky Sentinel, a ~20m airborne humanoid boss for Web Run.
+"""Generate Sky Sentinel, a ~70m airborne humanoid boss for Web Run.
 
 Blender authoring coordinates: Z-up, -Y forward. The exported GLB is a
 hierarchical static model: core, head, arms, legs and thrusters are separate
@@ -14,6 +14,7 @@ from mathutils import Vector
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'output'
 WEB_ASSETS = ROOT / 'web-run' / 'assets'
+MODEL_SCALE = 3.0
 
 COLORS = {
     'navy': '17283A', 'navy2': '294158', 'graphite': '0A121B',
@@ -225,13 +226,16 @@ def build_model():
     root['title']='Sky Sentinel Titan'
     root['units']='meters'
     root['enemyClass']='aerial_titan'
-    root['nominalHeightMeters']=20
+    root['nominalHeightMeters']=69
+    root['nominalWidthMeters']=60
+    root['modelScale']=MODEL_SCALE
     root['weakPointNode']='ReactorCore'
     root['description']='Giant airborne humanoid combat mech generated entirely with Blender Python.'
     build_torso(root); build_head(root); build_core(root)
     build_arm(-1,root); build_arm(1,root)
     build_leg(-1,root); build_leg(1,root)
     build_backpack(root); build_details(root)
+    root.scale=(MODEL_SCALE,MODEL_SCALE,MODEL_SCALE)
     return root
 
 
@@ -257,9 +261,9 @@ def export_verify(root):
     pts=[o.matrix_world@Vector(v) for o in meshes for v in o.bound_box]
     dims=[max(p[i] for p in pts)-min(p[i] for p in pts) for i in range(3)]
     # Width, front-back depth, vertical height in Blender authoring basis.
-    assert 19 < dims[0] < 27, dims
-    assert 12 < dims[1] < 20, dims
-    assert 20 < dims[2] < 25, dims
+    assert 58 < dims[0] < 63, dims
+    assert 44 < dims[1] < 49, dims
+    assert 67 < dims[2] < 72, dims
     names={o.name for o in bpy.context.scene.objects}
     for required in ('SkySentinel','Head','LeftArm','RightArm','LeftLeg','RightLeg','BackThrusters','WeakPointCore','ReactorCore'):
         assert required in names, required
@@ -268,19 +272,19 @@ def export_verify(root):
 
 def studio():
     scene=bpy.context.scene
-    bpy.ops.mesh.primitive_plane_add(size=90,location=(0,0,-11.4)); floor=bpy.context.object; floor.name='StudioFloor'; floor.data.materials.append(MATS['ground'])
+    bpy.ops.mesh.primitive_plane_add(size=260,location=(0,0,-34.2)); floor=bpy.context.object; floor.name='StudioFloor'; floor.data.materials.append(MATS['ground'])
     scene.world.use_nodes=True
     scene.world.node_tree.nodes['Background'].inputs[0].default_value=(.62,.69,.76,1)
     scene.world.node_tree.nodes['Background'].inputs[1].default_value=.42
     for name,pos,energy,size,color in [
-        ('Key',(-20,-25,25),3000,11,(1.0,.78,.62)),
-        ('Fill',(22,-9,13),1700,10,(.55,.78,1.0)),
-        ('Rim',(4,20,24),2500,9,(.42,.70,1.0)),
+        ('Key',(-60,-75,75),7500,28,(1.0,.78,.62)),
+        ('Fill',(66,-27,39),4200,26,(.55,.78,1.0)),
+        ('Rim',(12,60,72),6500,24,(.42,.70,1.0)),
     ]:
         data=bpy.data.lights.new(name,'AREA'); obj=bpy.data.objects.new(name,data); bpy.context.collection.objects.link(obj)
         obj.location=pos; obj.rotation_euler=(Vector((0,0,0))-obj.location).to_track_quat('-Z','Y').to_euler(); data.energy=energy; data.size=size; data.color=color
     data=bpy.data.cameras.new('StudioCamera'); cam=bpy.data.objects.new('StudioCamera',data); bpy.context.collection.objects.link(cam)
-    cam.location=(30,-46,20); cam.rotation_euler=(Vector((0,-.4,0))-cam.location).to_track_quat('-Z','Y').to_euler(); data.lens=58
+    cam.location=(90,-138,60); cam.rotation_euler=(Vector((0,-1.2,0))-cam.location).to_track_quat('-Z','Y').to_euler(); data.lens=58
     scene.camera=cam; scene.render.engine='BLENDER_EEVEE_NEXT'; scene.render.resolution_x=1400; scene.render.resolution_y=1000; scene.render.resolution_percentage=100
     scene.render.image_settings.file_format='PNG'; scene.render.filepath=str(OUT/'sky-sentinel.png'); scene.view_settings.look='AgX - Medium High Contrast'
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'sky-sentinel.blend'))

@@ -18,4 +18,8 @@ test('Blender-generated Sky Sentinel is a hierarchical giant-enemy asset',()=>{
   const root=(json.nodes??[]).find(node=>node.name==='SkySentinel');
   assert.equal(root?.extras?.enemyClass,'aerial_titan');
   assert.equal(root?.extras?.weakPointNode,'ReactorCore');
+  assert.equal(root?.extras?.nominalHeightMeters,69);
+  assert.equal(root?.extras?.nominalWidthMeters,60);
+  assert.equal(root?.extras?.modelScale,3);
+  assert.deepEqual(root?.scale,[3,3,3]);
 });
