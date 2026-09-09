@@ -82,7 +82,7 @@ const rings=ringPoints.map((point,index)=>{
 let started=false,paused=true,yaw=0,pitch=.13,elapsed=0,checkpoint=0,accumulator=0,last=performance.now(),candidate=null,drag=false,mouseSwing=false,noticeUntil=0,finished=false,failed=false,combatTaught=false,swingTaught=false;
 let best=null;try{best=Number(localStorage.getItem('threadline-best-v2'))||null;}catch{}
 const keys=new Set(),forward=new T.Vector3(0,0,-1),right=new T.Vector3(1,0,0),mobileMove=new T.Vector2();
-let mobileWebHeld=false,lookPointer=null,lookX=0,lookY=0,lookStartX=0,lookStartY=0,lookStartTime=0,movePointer=null,manualLookUntil=-10,nextAutoAttach=0;
+let mobileWebHeld=false,lookPointer=null,lookX=0,lookY=0,lookStartX=0,lookStartY=0,lookStartTime=0,movePointer=null,manualLookUntil=-10;
 const cameraTarget=new T.Vector3(),cameraDesired=new T.Vector3(),chaseOffset=new T.Vector3(0,4,9),aimOffset=new T.Vector3(0,1,-4),cameraForward=new T.Vector3(0,0,-1);
 
 function notice(text,seconds=2){$('#notice').textContent=text;noticeUntil=body.time+seconds;}
@@ -107,7 +107,7 @@ function resetTouchState(){
   const context=$('#mobile-context'),dodge=$('#mobile-dodge');if(context)context.hidden=true;if(dodge)dodge.hidden=true;
 }
 function restart(){
-  body.reset();combat.reset();combatView.reset();finished=false;failed=false;combatTaught=false;swingTaught=false;yaw=0;pitch=.13;checkpoint=0;elapsed=0;nextAutoAttach=0;keys.clear();mouseSwing=false;resetTouchState();direction();updateRings();snapCamera();
+  body.reset();combat.reset();combatView.reset();finished=false;failed=false;combatTaught=false;swingTaught=false;yaw=0;pitch=.13;checkpoint=0;elapsed=0;keys.clear();mouseSwing=false;resetTouchState();direction();updateRings();snapCamera();
   if(!touchCapable)notice('SPACEを押して、離して飛ぶ。XでZIP。',3);
 }
 function updateRings(){rings.forEach((ring,index)=>{ring.visible=index>=checkpoint;ring.material.opacity=index===checkpoint?.28:.06;ring.material.color.setHex(index===checkpoint?0xffcc86:0x86c9c9);});}
@@ -225,20 +225,16 @@ function step(){
   const dive=keys.has('ShiftLeft')||keys.has('ShiftRight')||(touchCapable&&!body.grounded&&mobileMove.y>.78);
   body.step(STEP,{steer,forward:!brakeIntent&&(keys.has('KeyW')||mobileMove.y<-.18),brake:brakeIntent,moveMagnitude,dive,reel:keys.has('KeyE')||shouldAutoReel(body,assistState)});
   applyReleaseAssist(body,STEP,traversalTuning);
-  const webHeld=keys.has('Space')||mouseSwing||mobileWebHeld;
-  const attachAge=body.anchor?body.time-body.attachTime:0;
-  if(body.anchor&&webHeld&&attachAge>.72&&(body.velocity.y>7||attachAge>2.15)){releaseWeb();nextAutoAttach=body.time+.20;}
-  else if(!body.anchor&&webHeld&&!brakeIntent&&body.time>=nextAutoAttach&&body.time-body.releaseTime>.18){shoot();nextAutoAttach=body.time+(body.anchor?.5:.24);}
   combat.step(STEP,body);if(!finished)elapsed+=STEP;
   if(body.outOfBounds){const safe=checkpoint?ringPoints[checkpoint-1].clone().add(new T.Vector3(0,2,5)):undefined;body.respawn(safe);before.copy(body.position);elapsed+=5;notice('エリア外 — 通過地点へ戻りました（+5秒）',2);snapCamera();}
-  if(!combatTaught&&checkpoint>0&&body.time>noticeUntil&&combat.target(body.position,forward,60)){combatTaught=true;if(!touchCapable)notice('警備ドローン！ Fで糸 → 近距離Qで蹴り',3);}
+  if(!combatTaught&&checkpoint>0&&body.time>noticeUntil&&combat.target(body.position,forward,60)){combatTaught=true;if(!touchCapable)notice('大型迎撃機！ Fでコアへ糸 → 近距離Qで攻撃',3);}
   for(const event of combat.drainEvents()){
     combatView.event(event);
-    if(event.type==='destroy'){notice(`ドローン停止 ${combat.defeated} / 3`,1.2);tone(880,.25);}else if(event.type==='hurt'){notice(touchCapable?'被弾 — 予兆時のDODGEで回避':'被弾 — Xで回避',1.4);tone(110,.2);}else if(event.type==='hit')tone(640,.08);
+    if(event.type==='destroy'){notice(`大型機停止 ${combat.defeated} / 3`,1.2);tone(880,.25);}else if(event.type==='hurt'){notice(touchCapable?'被弾 — 予兆時のDODGEで回避':'被弾 — Xで回避',1.4);tone(110,.2);}else if(event.type==='hit')tone(640,.08);
   }
   if(combat.health===0){failed=true;setPause(true);$('.intro h1').innerHTML='もう一度、空へ。';$('.intro>p:not(.eyebrow)').textContent=touchCapable?'敵に近づくとATTACK、攻撃予兆中だけDODGEが現れます。移動中の画面はできるだけ街に使います。':'照準が白く光る前に回避。Webを当ててから近づいて蹴る。';$('#start').innerHTML='屋上から再挑戦 <span>↗</span>';return;}
   if(checkpoint<rings.length&&crossesRing(before,body.position,checkpoint)){
-    checkpoint++;tone(700+checkpoint*120,.2);updateRings();if(!touchCapable)notice(checkpoint===rings.length?'ルート完走。残りのドローンへ。':`${checkpoint} / ${rings.length}`,1.1);
+    checkpoint++;tone(700+checkpoint*120,.2);updateRings();if(!touchCapable)notice(checkpoint===rings.length?'ルート完走。残りの大型機へ。':`${checkpoint} / ${rings.length}`,1.1);
   }
 }
 function finishCheck(){if(!finished&&!failed&&combat.health>0&&checkpoint===rings.length&&combat.defeated===combat.drones.length){finished=true;if(!best||elapsed<best){best=elapsed;try{localStorage.setItem('threadline-best-v2',String(best));}catch{}}notice(`CITY CLEAR · ${elapsed.toFixed(1)} 秒 — Rで再挑戦`,1000);tone(1100,.4);}}
@@ -268,12 +264,12 @@ function render(now){
   $('#speed strong').textContent=Math.round(speed*3.6);
   const landingLabel=body.grounded&&body.time<body.landingUntil?(body.landingType==='roll'?'LANDING ROLL':body.landingType==='skid'?'BRAKE SKID':body.landingType==='stick'?'STICK LANDING':null):null;
   $('#state').textContent=landingLabel??(recentZip?'WEB ZIP':body.time-body.dodgeTime<.42?'DODGE':body.anchor?'WEB SWING':body.wall?(body.velocity.y>1?'WALL RUN':'WALL CONTACT'):body.grounded?'ROOFTOP / STREET':body.velocity.y>2?'RISING':'FREE FALL');
-  $('#shield').textContent='◆'.repeat(combat.health)+'◇'.repeat(3-combat.health);$('#security').textContent=`DRONES ${combat.defeated} / 3`;
+  $('#shield').textContent='◆'.repeat(combat.health)+'◇'.repeat(3-combat.health);$('#security').textContent=`TITANS ${combat.defeated} / 3`;
   const enemy=combat.target(body.position,forward);$('#combat-hint').textContent=!touchCapable&&enemy?`${Math.round(body.position.distanceTo(enemy.position))} m · F 糸${body.position.distanceTo(enemy.position)<28?' / Q 飛び蹴り':''}`:'';
   $('#progress').textContent=`${checkpoint} / ${rings.length}`;
-  $('#next').textContent=checkpoint<rings.length?`ROUTE ${Math.round(body.position.distanceTo(ringPoints[checkpoint]))} m`:finished?`CLEAR ${elapsed.toFixed(1)} s · BEST ${best?.toFixed(1)} s`:'DRONES REMAIN';
+  $('#next').textContent=checkpoint<rings.length?`ROUTE ${Math.round(body.position.distanceTo(ringPoints[checkpoint]))} m`:finished?`CLEAR ${elapsed.toFixed(1)} s · BEST ${best?.toFixed(1)} s`:'TITANS REMAIN';
   const goal=checkpoint<rings.length?ringPoints[checkpoint]:combat.drones.filter(drone=>drone.hp>0).sort((a,b)=>a.position.distanceTo(body.position)-b.position.distanceTo(body.position))[0]?.position;
-  if(goal&&!finished){const delta=goal.clone().sub(body.position),angle=Math.atan2(delta.dot(right),delta.dot(forward)),arrow=Math.abs(angle)<.45?'↑':Math.abs(angle)>2.5?'↓':angle>0?'→':'←';$('#route-arrow').textContent=touchCapable?`${arrow} ${Math.round(delta.length())} m`:`${arrow} ${checkpoint<rings.length?'次のリング':'残りのドローン'} · ${Math.round(delta.length())} m`;}else $('#route-arrow').textContent='';
+  if(goal&&!finished){const delta=goal.clone().sub(body.position),angle=Math.atan2(delta.dot(right),delta.dot(forward)),arrow=Math.abs(angle)<.45?'↑':Math.abs(angle)>2.5?'↓':angle>0?'→':'←';$('#route-arrow').textContent=touchCapable?`${arrow} ${Math.round(delta.length())} m`:`${arrow} ${checkpoint<rings.length?'次のリング':'残りの大型機'} · ${Math.round(delta.length())} m`;}else $('#route-arrow').textContent='';
   $('#reticle').classList.toggle('ready',!!candidate);$('#anchor-hint').textContent=body.anchor?'離して飛ぶ':candidate?(touchCapable?'':'SPACE / WEB'):'接続先を探索中';
 
   if(touchCapable){
