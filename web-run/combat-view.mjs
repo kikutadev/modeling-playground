@@ -51,14 +51,16 @@ export function createCombatView(scene,combat){
         const d=combat.drones[i];v.root.visible=d.hp>0;v.root.position.copy(d.position);
         // Blender asset faces -Z after glTF conversion; rotate the whole titan toward the hero.
         v.root.rotation.y=Math.atan2(body.position.x-d.position.x,body.position.z-d.position.z);
-        v.root.rotation.z=Math.sin(combat.time*1.4+i)*.018;
-        v.root.position.y+=Math.sin(combat.time*.55+i)*1.1;
+        const bank=T.MathUtils.clamp(-(d.motionVelocity?.x??0)*.015,-.16,.16);
+        v.root.rotation.z=bank+Math.sin(combat.time*1.4+i)*.012;
+        v.root.rotation.x=T.MathUtils.clamp((d.motionVelocity?.z??0)*.006,-.08,.08);
+        v.root.position.y+=Math.sin(combat.time*.55+i)*.25;
         if(v.head)v.head.rotation.y=Math.sin(combat.time*.45+i)*.08;
         if(v.leftArm&&v.rightArm){
           const recoil=Math.max(0,d.charge-.82)*.10;
           v.leftArm.rotation.x=-recoil;v.rightArm.rotation.x=-recoil;
         }
-        for(const thruster of [v.leftThruster,v.rightThruster])if(thruster)thruster.rotation.z+=dt*.12;
+        for(const thruster of [v.leftThruster,v.rightThruster])if(thruster)thruster.rotation.z+=dt*.42;
         if(v.core?.material){
           const hot=d.charge>.8||d.stunUntil>combat.time;
           if(v.core.material.emissive)v.core.material.emissive.setHex(hot?0xffffff:0xffb53d);

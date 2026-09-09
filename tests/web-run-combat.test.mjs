@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Vector3,Box3} from 'three';
-import {AirCombat,DRONE_SPAWNS,DRONE_HIT_RADIUS} from '../web-run/combat.mjs';
+import {AirCombat,DRONE_SPAWNS,DRONE_HIT_RADIUS,TITAN_WEB_RADIUS_XZ} from '../web-run/combat.mjs';
 import {SwingBody,STEP,makeCity,chooseAnchor,segmentHit} from '../web-run/physics.mjs';
 import {solveLimb} from '../web-run/hero.mjs';
 const forward=new Vector3(0,0,-1);
@@ -64,8 +64,37 @@ test('giant titan silhouette has a forgiving matching web-hit volume',()=>{
  assert.equal(combat.drones[0].hp,2);
 });
 
-test('production titan spawns and hit volume match the 60m-class enemy scale',()=>{
- assert.ok(DRONE_SPAWNS[0][1]>=58);
- assert.ok(DRONE_SPAWNS[2][1]>=70);
- assert.ok(DRONE_HIT_RADIUS>=10);
+test('production titan spawns and hit volume match the 40m-class enemy scale',()=>{
+ assert.ok(DRONE_SPAWNS[0][1]>=44&&DRONE_SPAWNS[0][1]<=50);
+ assert.ok(DRONE_SPAWNS[2][1]>=60&&DRONE_SPAWNS[2][1]<=66);
+ assert.ok(DRONE_HIT_RADIUS>=7&&DRONE_HIT_RADIUS<9);
+ assert.ok(TITAN_WEB_RADIUS_XZ>=13&&TITAN_WEB_RADIUS_XZ<=15);
+});
+
+test('traversal WEB stops on a titan before a building behind it',()=>{
+ const {body,combat}=setup();
+ combat.drones.forEach((d,i)=>{if(i)d.hp=0;});
+ combat.drones[0].position.set(0,30,-72);combat.drones[0].home.copy(combat.drones[0].position);
+ const fallback={point:new Vector3(0,35,-115),buildingId:99,score:1};
+ const anchor=combat.webAnchor(body.position,forward,fallback);
+ assert.equal(anchor.kind,'enemy');assert.equal(anchor.enemyId,0);
+ assert.ok(body.position.distanceTo(anchor.point)<body.position.distanceTo(fallback.point));
+ body.attach(anchor);assert.equal(body.anchor.enemyId,0);
+});
+
+test('enemy traversal anchor follows titan movement and releases if titan is destroyed',()=>{
+ const {body,combat}=setup();
+ combat.drones.forEach((d,i)=>{if(i)d.hp=0;});
+ const anchor=combat.webAnchor(body.position,forward,null);assert.equal(anchor?.kind,'enemy');
+ body.attach(anchor);const offset=body.anchor.offset.clone();
+ combat.drones[0].position.add(new Vector3(8,3,-5));combat.syncAnchor(body);
+ assert.ok(body.anchor.point.distanceTo(combat.drones[0].position.clone().add(offset))<1e-8);
+ combat.drones[0].hp=0;assert.equal(combat.syncAnchor(body),false);assert.equal(body.anchor,null);
+});
+
+test('active titan patrol covers a visibly larger volume',()=>{
+ const {body,combat}=setup();combat.drones.forEach((d,i)=>{if(i)d.hp=0;});
+ const start=combat.drones[0].position.clone();
+ tick(combat,body,6);const moved=combat.drones[0].position.distanceTo(start);
+ assert.ok(moved>8,`expected visible movement, got ${moved}`);
 });

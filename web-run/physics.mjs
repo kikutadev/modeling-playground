@@ -8,10 +8,10 @@ export function makeCity() {
   const buildings = [];
   let seed = 1977;
   const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  for (let x = -5; x <= 5; x++) for (let z = -7; z <= 7; z++) {
+  for (let x = -6; x <= 6; x++) for (let z = -9; z <= 9; z++) {
     if (x === 0) continue;
     const w = 26 + rand() * 14, d = 28 + rand() * 14, h = (Math.abs(x)===1?96:38) + rand() * (Math.abs(x)===1?46:88);
-    const cx = x * 58, cz = z * 52;
+    const cx = x * 78, cz = z * 64;
     buildings.push({ id: buildings.length, x: cx, z: cz, w, d, h,
       box: new Box3(new Vector3(cx-w/2, 0, cz-d/2), new Vector3(cx+w/2,h,cz+d/2)) });
   }
@@ -19,7 +19,7 @@ export function makeCity() {
   buildings.push({ id: buildings.length, x:0,z:22,w:16,d:26,h:24,
     box:new Box3(new Vector3(-8,0,9),new Vector3(8,24,35)) });
   // A traversable sky lobby: the opening is real collision-free space, not a painted facade.
-  for (const [x,y,z,w,h,d] of [[0,16,-145,60,2,44],[0,48,-145,60,4,44],[-30,32,-145,2,30,44],[30,32,-145,2,30,44],[-26,7.5,-124,2,15,2],[26,7.5,-124,2,15,2],[-26,7.5,-166,2,15,2],[26,7.5,-166,2,15,2]]) {
+  for (const [x,y,z,w,h,d] of [[0,16,-145,92,2,44],[0,48,-145,92,4,44],[-46,32,-145,2,30,44],[46,32,-145,2,30,44],[-42,7.5,-124,2,15,2],[42,7.5,-124,2,15,2],[-42,7.5,-166,2,15,2],[42,7.5,-166,2,15,2]]) {
     buildings.push({id:buildings.length,x,z,w,h,d,kind:'atrium',
       box:new Box3(new Vector3(x-w/2,y-h/2,z-d/2),new Vector3(x+w/2,y+h/2,z+d/2))});
   }
@@ -50,7 +50,7 @@ export function chooseAnchor(position, forward, buildings, previousBuildingId=nu
   const desiredDirection=(options.desiredDirection?.clone?.()??forward.clone()).setY(0);
   if(desiredDirection.lengthSq()<1e-6)desiredDirection.copy(forward).setY(0);
   desiredDirection.normalize();
-  const idealRopeLength=options.idealRopeLength??42;
+  const idealRopeLength=options.idealRopeLength??58;
   const lateralIntent=clamp(options.lateralIntent??0,-1,1);
   const desiredRight=new Vector3(-desiredDirection.z,0,desiredDirection.x);
   const velocity=options.velocity?.clone?.()??null;
@@ -67,8 +67,7 @@ export function chooseAnchor(position, forward, buildings, previousBuildingId=nu
     if(lo.y>position.y+5) candidates.push(new Vector3(clamp(aim.x,lo.x,hi.x),lo.y,clamp(aim.z,lo.z,hi.z)));
     for(const p of candidates){
       const d=p.clone().sub(position), distance=d.length();
-      if(distance<6 || distance>82 || d.y<4) continue;
-      if(position.y>12 && p.y-distance<5) continue;
+      if(distance<6 || distance>110 || d.y<4) continue;
       const planar=d.clone().setY(0);
       if(planar.lengthSq()<1e-6)continue;
       planar.normalize();
@@ -108,13 +107,13 @@ export class SwingBody {
   }
   attach(target, options={}) {
     if(!target) return false;
-    this.anchor={point:target.point.clone(),buildingId:target.buildingId};this.releaseAssist=null;
+    this.anchor={point:target.point.clone(),buildingId:target.buildingId??null,enemyId:target.enemyId??null,kind:target.kind??'building',offset:target.offset?.clone?.()??null};this.releaseAssist=null;
     const preload=clamp(options.preload??0,0,.18);
     this.ropeLength=this.position.distanceTo(target.point)*(1-preload);
     this.webHand=this.attaches%2; this.attachTime=this.time; this.attaches++; return true;
   }
   release() {
-    if(this.anchor) { this.releases++; this.releaseTime=this.time; this.lastBuildingId=this.anchor.buildingId; }
+    if(this.anchor) { this.releases++; this.releaseTime=this.time; if(this.anchor.buildingId!==null&&this.anchor.buildingId!==undefined)this.lastBuildingId=this.anchor.buildingId; }
     this.anchor=null;
   }
   get canWallJump(){return !!this.wall||(!this.grounded&&this.time-this.lastWallTime<.2);}
@@ -234,7 +233,7 @@ export class SwingBody {
       const blocked=this.buildings.some(b=>{const t=segmentHit(this.position,this.anchor.point,b.box);return t!==null && t<1-1e-5;});
       if(blocked || this.position.distanceTo(this.anchor.point)>this.ropeLength+2) this.release();
     }
-    this.outOfBounds=this.position.y<-20 || Math.abs(this.position.x)>345 || Math.abs(this.position.z)>390;
+    this.outOfBounds=this.position.y<-20 || Math.abs(this.position.x)>550 || Math.abs(this.position.z)>650;
     this.wasBraking=brake;
     this.distance+=prev.distanceTo(this.position); this.maxSpeed=Math.max(this.maxSpeed,v.length());
   }

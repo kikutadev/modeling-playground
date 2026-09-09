@@ -21,7 +21,7 @@ export const DEFAULT_TRAVERSAL_TUNING = Object.freeze({
   releaseAssistDuration: 0.16,
   maxTraversalSpeed: 58,
   attachPreload: 0.075,
-  idealRopeLength: 42,
+  idealRopeLength: 58,
   zipSpeed: 36,
   zipBoost: 5.5,
   zipMinimumUp: 6.5,

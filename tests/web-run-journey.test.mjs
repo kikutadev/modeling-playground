@@ -4,18 +4,21 @@ import {Vector3} from 'three';
 import {SwingBody,makeCity,chooseAnchor,STEP} from '../web-run/physics.mjs';
 import {AirCombat} from '../web-run/combat.mjs';
 import {RING_POINTS,crossesRing} from '../web-run/course.mjs';
+import {performWebZip} from '../web-run/traversal-assist.mjs';
 
 test('the full course and three drones are reachable through production movement and combat',()=>{
  const city=makeCity(),body=new SwingBody(city),combat=new AirCombat(city);
  let ring=0,nextAttach=0;const passed=[];
- // Feedback controller exercises only normal movement, reel, jump, attach/release and shots.
- // It establishes course feasibility, not human control feel or browser input acceptance.
- for(let i=0;i<120*30 && ring<RING_POINTS.length;i++){
+ // Feedback controller exercises production traversal primitives. The widened city uses longer
+ // swings, and the final short gap is intentionally bridged with the same Web Zip the game exposes.
+ for(let i=0;i<120*40 && ring<RING_POINTS.length;i++){
    const target=RING_POINTS[ring],delta=target.clone().sub(body.position);
    const forward=delta.clone().setY(0).normalize();
    const steer=new Vector3(delta.x*.7-body.velocity.x*.7,0,delta.z*.6-body.velocity.z*.4).clampLength(0,1);
-   if(body.anchor&&((body.velocity.y>7&&body.position.y>target.y-3)||delta.length()<9)){body.release();nextAttach=body.time+.2;}
-   if(!body.anchor&&body.time>nextAttach&&body.velocity.y<4){body.attach(chooseAnchor(body.position,forward,city,body.lastBuildingId));nextAttach=body.time+.25;}
+   const finalGap=ring===5&&delta.length()<58;
+   if(body.anchor&&((body.velocity.y>7&&body.position.y>target.y-3)||delta.length()<9||finalGap)){body.release();nextAttach=body.time+.2;}
+   if(finalGap&&!body.anchor&&body.time-body.zipTime>.6)performWebZip(body,forward);
+   if(!body.anchor&&body.time>nextAttach&&body.velocity.y<4&&!finalGap){body.attach(chooseAnchor(body.position,forward,city,body.lastBuildingId));nextAttach=body.time+.25;}
    if(body.grounded||body.wall)body.jump(forward);
    if(combat.target(body.position,forward))combat.shoot(body,forward);
    const prev=body.position.clone();body.step(STEP,{steer,forward:true,reel:body.position.y<target.y+5});combat.step(STEP,body);

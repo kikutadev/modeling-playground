@@ -2,7 +2,7 @@ import * as T from 'three';
 import {SwingBody,makeCity,chooseAnchor,segmentHit,kickFreshWallContact,STEP} from './physics.mjs';
 import {applySwingAssist,applyTurnAssist,applyReleaseAssist,releaseWithAssist,performWebZip,shouldAutoReel,DEFAULT_TRAVERSAL_TUNING} from './traversal-assist.mjs';
 import {createHero} from './hero.mjs';
-import {AirCombat} from './combat.mjs';
+import {AirCombat,DRONE_KICK_RANGE,TITAN_SHOT_RANGE,TITAN_THREAT_RANGE} from './combat.mjs';
 import {RING_POINTS,crossesRing} from './course.mjs';
 import {createCombatView} from './combat-view.mjs';
 import './style.css';
@@ -17,8 +17,8 @@ const renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-
 renderer.setPixelRatio(Math.min(devicePixelRatio,touchCapable?1.5:2));
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.outputColorSpace=T.SRGBColorSpace;
 renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
-const scene=new T.Scene();scene.background=new T.Color(0x8daebe);scene.fog=new T.Fog(0x8daebe,95,360);
-const camera=new T.PerspectiveCamera(66,1,.1,600);
+const scene=new T.Scene();scene.background=new T.Color(0x8daebe);scene.fog=new T.Fog(0x8daebe,120,560);
+const camera=new T.PerspectiveCamera(66,1,.1,850);
 scene.add(new T.HemisphereLight(0xd1eafa,0x455466,2.4));
 const sun=new T.DirectionalLight(0xffd5a2,3.2);sun.position.set(-70,140,-80);sun.castShadow=true;
 sun.shadow.mapSize.set(touchCapable?1024:2048,touchCapable?1024:2048);Object.assign(sun.shadow.camera,{left:-85,right:85,top:85,bottom:-85,near:1,far:330});sun.shadow.bias=-.0003;scene.add(sun,sun.target);
@@ -38,7 +38,7 @@ function buildBoxBatches(){
   }
   boxBatches.clear();
 }
-box(0,-.35,0,760,.7,860,asphalt);
+box(0,-.35,0,1200,.7,1350,asphalt);
 const facadeMats=[0x466b7a,0x6e8388,0x8a9290,0x365766,0x9b8777].map(mat),windows=[];
 for(const building of buildings){
   if(building.kind==='atrium'){
@@ -56,15 +56,15 @@ for(const building of buildings){
 const winmat=new T.MeshStandardMaterial({color:0xb6d6d7,emissive:0x759da6,emissiveIntensity:.22,roughness:.3,metalness:.5});
 const winmesh=new T.InstancedMesh(geo,winmat,windows.length),dummy=new T.Object3D();
 windows.forEach((window,index)=>{dummy.position.set(...window.slice(0,3));dummy.scale.set(...window.slice(3));dummy.updateMatrix();winmesh.setMatrixAt(index,dummy.matrix);winmesh.setColorAt(index,new T.Color(index%9===0?0xffdb91:index%4===0?0x456776:0xb6d6d7));});scene.add(winmesh);
-const paint=mat(0xd7cba7);for(let z=-390;z<400;z+=12)box(0,.015,z,.16,.025,5,paint);
+const paint=mat(0xd7cba7);for(let z=-620;z<630;z+=12)box(0,.015,z,.16,.025,5,paint);
 const carMats=[0xcd775c,0xe0d0b2,0x486576].map(mat);
-for(let index=0;index<92;index++){const z=-370+index*8.1,x=index%2?7:-7;box(x,.6,z,1.8,1.1,3.8,carMats[index%3]);box(x,1.3,z+.2,1.65,.5,1.9,roof);}
+for(let index=0;index<148;index++){const z=-590+index*8.1,x=index%2?7:-7;box(x,.6,z,1.8,1.1,3.8,carMats[index%3]);box(x,1.3,z+.2,1.65,.5,1.9,roof);}
 const lobbyLight=new T.MeshBasicMaterial({color:0xa8fff0});
-for(let z=-164;z<=-126;z+=4)box(0,45.9,z,56,.08,.13,lobbyLight);for(const x of [-29.5,29.5])box(x,17.08,-145,.16,.08,42,lobbyLight);
+for(let z=-164;z<=-126;z+=4)box(0,45.9,z,88,.08,.13,lobbyLight);for(const x of [-45.5,45.5])box(x,17.08,-145,.16,.08,42,lobbyLight);
 const signCanvas=document.createElement('canvas');signCanvas.width=1024;signCanvas.height=128;
 const ink=signCanvas.getContext('2d');ink.fillStyle='#1d3e4b';ink.fillRect(0,0,1024,128);ink.fillStyle='#c1e5db';ink.font='600 62px sans-serif';ink.textAlign='center';ink.fillText('SKY GALLERY',512,88);
 const signMap=new T.CanvasTexture(signCanvas);signMap.colorSpace=T.SRGBColorSpace;
-const sign=new T.Mesh(new T.PlaneGeometry(28,3.2),new T.MeshBasicMaterial({map:signMap}));sign.position.set(0,48,-122.98);scene.add(sign);
+const sign=new T.Mesh(new T.PlaneGeometry(40,3.2),new T.MeshBasicMaterial({map:signMap}));sign.position.set(0,48,-122.98);scene.add(sign);
 buildBoxBatches();
 
 const hero=createHero();scene.add(hero.root);
@@ -88,13 +88,17 @@ const cameraTarget=new T.Vector3(),cameraDesired=new T.Vector3(),chaseOffset=new
 function notice(text,seconds=2){$('#notice').textContent=text;noticeUntil=body.time+seconds;}
 function direction(){forward.set(-Math.sin(yaw),0,-Math.cos(yaw));right.set(Math.cos(yaw),0,-Math.sin(yaw));}
 function anchorOptions(){return {desiredDirection:forward,velocity:body.velocity,lateralIntent:touchCapable?mobileMove.x:0,idealRopeLength:traversalTuning.idealRopeLength};}
+function chooseTraversalAnchor(){
+  const building=chooseAnchor(body.position,forward,buildings,body.lastBuildingId,anchorOptions());
+  return combat.webAnchor(body.position,forward,building);
+}
 function releaseWeb(){const released=releaseWithAssist(body,forward,traversalTuning);if(released&&touchCapable)updateContextUI();return released;}
 function webZip(){if(performWebZip(body,forward,traversalTuning)){tone(760,.07);if(touchCapable)updateContextUI();return true;}return false;}
 function shoot(){
   if(paused)return;
   if(body.canWallJump){body.jump(forward);tone(690,.06);return;}
   body.jump(forward);
-  candidate=chooseAnchor(body.position,forward,buildings,body.lastBuildingId,anchorOptions());
+  candidate=chooseTraversalAnchor();
   if(body.attach(candidate,{preload:traversalTuning.attachPreload})){
     if(!swingTaught){swingTaught=true;if(!touchCapable)notice('押して振る。離して飛ぶ。XでWeb Zip。',2.2);}
     tone(560,.055);if(touchCapable)updateContextUI();
@@ -130,7 +134,7 @@ window.addEventListener('keydown',event=>{
   if(paused)return;keys.add(event.code);
   if(event.code==='Space')shoot();if(event.code==='KeyG')toggleWeb();if(event.code==='KeyR')restart();
   if(event.code==='KeyF')combat.shoot(body,forward,hero.shotHandWorld);
-  if(event.code==='KeyQ'&&!combat.kick(body,forward))notice('敵へ近づいて Q — 48 m以内で飛び蹴り',1.3);
+  if(event.code==='KeyQ'&&!combat.kick(body,forward))notice(`敵へ近づいて Q — ${DRONE_KICK_RANGE} m以内で飛び蹴り`,1.3);
   if(event.code==='KeyX'){if(!webZip())body.dodge(right.clone().multiplyScalar(keys.has('KeyA')?-1:1));}
 });
 window.addEventListener('keyup',event=>{keys.delete(event.code);if(event.code==='Space'&&!mouseSwing&&!paused)releaseWeb();});
@@ -185,12 +189,12 @@ function snapCamera(){cameraForward.copy(forward);chaseOffset.copy(cameraForward
 
 function getContextAction(){
   const enemy=combat.target(body.position,forward);
-  if(enemy&&body.position.distanceTo(enemy.position)<48)return {kind:'KICK',label:'ATTACK'};
+  if(enemy&&body.position.distanceTo(enemy.position)<DRONE_KICK_RANGE)return {kind:'KICK',label:'ATTACK'};
   if(!body.anchor&&!body.grounded&&body.time-body.zipTime>traversalTuning.zipCooldown)return {kind:'ZIP',label:'ZIP'};
-  if(enemy&&body.position.distanceTo(enemy.position)<115)return {kind:'SHOT',label:'ATTACK'};
+  if(enemy&&body.position.distanceTo(enemy.position)<TITAN_SHOT_RANGE)return {kind:'SHOT',label:'ATTACK'};
   return null;
 }
-function isCombatThreatened(){return combat.drones.some(drone=>drone.hp>0&&drone.charge>.32&&body.position.distanceTo(drone.position)<125);}
+function isCombatThreatened(){return combat.drones.some(drone=>drone.hp>0&&drone.charge>.32&&body.position.distanceTo(drone.position)<TITAN_THREAT_RANGE);}
 function updateContextUI(){
   if(!touchCapable)return;
   const context=$('#mobile-context'),dodge=$('#mobile-dodge');if(!context||!dodge)return;
@@ -220,6 +224,7 @@ function step(){
   const moveMagnitude=Math.min(1,Math.hypot(moveForward,moveRight));
   const throttle=brakeIntent?0:Math.max(.25,Math.min(1,Math.max(0,moveForward)));
   const turnIntent=brakeIntent?0:(touchCapable?Math.abs(mobileMove.x):Math.min(1,Math.abs(moveRight)));
+  combat.syncAnchor(body);
   const assistState=applySwingAssist(body,STEP,{desiredDirection:forward,throttle,braking:brakeIntent},traversalTuning);
   applyTurnAssist(body,STEP,{desiredDirection:forward,turnIntent},traversalTuning);
   const dive=keys.has('ShiftLeft')||keys.has('ShiftRight')||(touchCapable&&!body.grounded&&mobileMove.y>.78);
@@ -230,7 +235,7 @@ function step(){
   applyReleaseAssist(body,STEP,traversalTuning);
   combat.step(STEP,body);if(!finished)elapsed+=STEP;
   if(body.outOfBounds){const safe=checkpoint?ringPoints[checkpoint-1].clone().add(new T.Vector3(0,2,5)):undefined;body.respawn(safe);before.copy(body.position);elapsed+=5;notice('エリア外 — 通過地点へ戻りました（+5秒）',2);snapCamera();}
-  if(!combatTaught&&checkpoint>0&&body.time>noticeUntil&&combat.target(body.position,forward,130)){combatTaught=true;if(!touchCapable)notice('大型迎撃機！ Fでコアへ糸 → 近距離Qで攻撃',3);}
+  if(!combatTaught&&checkpoint>0&&body.time>noticeUntil&&combat.target(body.position,forward,135)){combatTaught=true;if(!touchCapable)notice('大型迎撃機！ Fでコアへ糸 → 近距離Qで攻撃',3);}
   for(const event of combat.drainEvents()){
     combatView.event(event);
     if(event.type==='destroy'){notice(`大型機停止 ${combat.defeated} / 3`,1.2);tone(880,.25);}else if(event.type==='hurt'){notice(touchCapable?'被弾 — 予兆時のDODGEで回避':'被弾 — Xで回避',1.4);tone(110,.2);}else if(event.type==='hit')tone(640,.08);
@@ -245,7 +250,7 @@ function finishCheck(){if(!finished&&!failed&&combat.health>0&&checkpoint===ring
 function render(now){
   const dt=Math.min((now-last)/1000,.05);last=now;
   if(!paused){accumulator+=dt;while(accumulator>=STEP){step();finishCheck();accumulator-=STEP;if(paused)break;}}else accumulator=0;
-  direction();candidate=chooseAnchor(body.position,forward,buildings,body.lastBuildingId,anchorOptions());
+  direction();candidate=chooseTraversalAnchor();
   hero.update(body,forward,paused?0:dt,combat);combatView.update(paused?0:dt,body);
   rope.visible=!!body.anchor;if(body.anchor){const attribute=rope.geometry.attributes.position;attribute.setXYZ(0,...hero.handWorld.toArray());attribute.setXYZ(1,...body.anchor.point.toArray());attribute.needsUpdate=true;}
   marker.visible=!!candidate&&!body.anchor;if(candidate){marker.position.copy(candidate.point);marker.rotation.y+=dt;}
@@ -269,7 +274,7 @@ function render(now){
   const landingLabel=body.grounded&&body.time<body.landingUntil?(body.landingType==='roll'?'LANDING ROLL':body.landingType==='skid'?'BRAKE SKID':body.landingType==='stick'?'STICK LANDING':null):null;
   $('#state').textContent=landingLabel??(recentZip?'WEB ZIP':body.time-body.dodgeTime<.42?'DODGE':body.anchor?'WEB SWING':body.wall?(body.velocity.y>1?'WALL RUN':'WALL CONTACT'):body.grounded?'ROOFTOP / STREET':body.velocity.y>2?'RISING':'FREE FALL');
   $('#shield').textContent='◆'.repeat(combat.health)+'◇'.repeat(3-combat.health);$('#security').textContent=`TITANS ${combat.defeated} / 3`;
-  const enemy=combat.target(body.position,forward);$('#combat-hint').textContent=!touchCapable&&enemy?`${Math.round(body.position.distanceTo(enemy.position))} m · F 糸${body.position.distanceTo(enemy.position)<48?' / Q 飛び蹴り':''}`:'';
+  const enemy=combat.target(body.position,forward);$('#combat-hint').textContent=!touchCapable&&enemy?`${Math.round(body.position.distanceTo(enemy.position))} m · F 糸${body.position.distanceTo(enemy.position)<DRONE_KICK_RANGE?' / Q 飛び蹴り':''}`:'';
   $('#progress').textContent=`${checkpoint} / ${rings.length}`;
   $('#next').textContent=checkpoint<rings.length?`ROUTE ${Math.round(body.position.distanceTo(ringPoints[checkpoint]))} m`:finished?`CLEAR ${elapsed.toFixed(1)} s · BEST ${best?.toFixed(1)} s`:'TITANS REMAIN';
   const goal=checkpoint<rings.length?ringPoints[checkpoint]:combat.drones.filter(drone=>drone.hp>0).sort((a,b)=>a.position.distanceTo(body.position)-b.position.distanceTo(body.position))[0]?.position;
@@ -284,5 +289,5 @@ function render(now){
 }
 requestAnimationFrame(render);
 
-export function readPlayState(){return {position:body.position.toArray(),velocity:body.velocity.toArray(),yaw,time:body.time,attached:!!body.anchor,grounded:body.grounded,wall:!!body.wall,checkpoint,health:combat.health,defeated:combat.defeated,finished,failed,paused,zipTime:body.zipTime,landingType:body.landingType,landingUntil:body.landingUntil};}
+export function readPlayState(){return {position:body.position.toArray(),velocity:body.velocity.toArray(),yaw,time:body.time,attached:!!body.anchor,anchorKind:body.anchor?.kind??null,anchorEnemyId:body.anchor?.enemyId??null,anchorPoint:body.anchor?.point?.toArray?.()??null,titans:combat.drones.map(d=>({id:d.id,position:d.position.toArray(),hp:d.hp})),grounded:body.grounded,wall:!!body.wall,checkpoint,health:combat.health,defeated:combat.defeated,finished,failed,paused,zipTime:body.zipTime,landingType:body.landingType,landingUntil:body.landingUntil};}
 if(new URLSearchParams(location.search).has('e2e'))globalThis.__threadlineReadState=readPlayState;

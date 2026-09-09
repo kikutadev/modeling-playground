@@ -65,9 +65,9 @@ test('reverse input can actually bleed free-flight and ground speed',()=>{
 test('city reads as a larger urban canyon while leaving a wide central avenue',()=>{
  const city=makeCity().filter(b=>b.kind!=='atrium'&&b.x!==0);
  assert.ok(Math.max(...city.map(b=>b.h))>130);
- assert.ok(Math.max(...city.map(b=>Math.abs(b.x)))>=290);
+ assert.ok(Math.max(...city.map(b=>Math.abs(b.x)))>=460);
  const nearestFacade=Math.min(...city.map(b=>Math.abs(b.x)-b.w/2));
- assert.ok(nearestFacade>35);
+ assert.ok(nearestFacade>55);
 });
 
 test('ground brake starts a visible skid state and can retrigger after release',()=>{
