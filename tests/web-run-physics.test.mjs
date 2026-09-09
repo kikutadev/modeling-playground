@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Vector3} from 'three';
-import {SwingBody, makeCity, chooseAnchor, kickFreshWallContact, STEP, segmentHit} from '../web-run/physics.mjs';
+import {SwingBody, makeCity, chooseAnchor, STEP, segmentHit} from '../web-run/physics.mjs';
 const f=new Vector3(0,0,-1);
 test('anchor sits on an actual visible facade',()=>{
  const city=makeCity(),body=new SwingBody(city),target=chooseAnchor(body.position,f,city);
@@ -27,19 +27,21 @@ test('roof landing and wall contact do not tunnel at high speed',()=>{
  assert.ok(body.position.x<b.box.min.x);assert.ok(body.wall);body.jump(f);assert.ok(body.velocity.x<0);assert.ok(body.velocity.y>0);
 });
 
-test('fresh unanchored wall contact immediately becomes a wall kick',()=>{
+test('fresh wall contact stays on the wall until an explicit jump',()=>{
  const city=makeCity(),body=new SwingBody(city),b=city[0];
  body.position.set(b.box.min.x-1,12,b.z);body.velocity.set(62,0,0);
- const hadWall=!!body.wall;for(let i=0;i<6&&!body.wall;i++)body.step(STEP);
- assert.ok(body.wall);assert.equal(kickFreshWallContact(body,hadWall,new Vector3(0,0,-1)),true);
+ for(let i=0;i<6&&!body.wall;i++)body.step(STEP);
+ assert.ok(body.wall);assert.equal(body.wallJumpTime,-10,'wall contact alone must not auto-jump');
+ const contactPosition=body.position.clone();
+ body.jump(new Vector3(0,0,-1));
  assert.equal(body.wall,null);assert.ok(body.wallJumpTime>-1);assert.ok(body.velocity.y>0);
- assert.equal(kickFreshWallContact(body,false,new Vector3(0,0,-1)),false,'One contact cannot retrigger after the kick clears wall state');
+ assert.ok(body.position.equals(contactPosition),'explicit kick must not teleport the body');
 });
 
 test('wall kick keeps an outward escape component while following the aimed heading',()=>{
  const city=makeCity(),body=new SwingBody(city),b=city[0];
  body.position.set(b.box.min.x-1,12,b.z);body.velocity.set(62,0,0);for(let i=0;i<6;i++)body.step(STEP);
- assert.ok(body.wall);const jumpAt=body.time;body.jump(new Vector3(0,0,-1));
+ assert.ok(body.wall);assert.equal(body.wallJumpTime,-10);const jumpAt=body.time;body.jump(new Vector3(0,0,-1));
  assert.ok(body.velocity.x<0,'Kick must clear the facade');
  assert.ok(body.velocity.z<0,'Aim direction must shape the launch instead of a pure normal bounce');
  assert.ok(body.velocity.y>0);assert.equal(body.wallJumpTime,jumpAt);
@@ -55,8 +57,10 @@ test('wall kick keeps momentum and stays on a clean post-jump trajectory for 0.6
  body.position.set(b.box.max.x+1,20,b.z);body.velocity.set(-42,0,-22);
  const incomingHorizontal=Math.hypot(body.velocity.x,body.velocity.z);
  let kicked=false,kickPosition=null;
- for(let i=0;i<30&&!kicked;i++){const hadWall=!!body.wall;body.step(STEP,{steer:desired,forward:true,moveMagnitude:1});if(kickFreshWallContact(body,hadWall,desired)){kicked=true;kickPosition=body.position.clone();}}
- assert.ok(kicked,'expected production fresh-wall auto kick');
+ for(let i=0;i<30&&!body.wall;i++)body.step(STEP,{steer:desired,forward:true,moveMagnitude:1});
+ assert.ok(body.wall,'expected wall contact');assert.equal(body.wallJumpTime,-10);
+ body.jump(desired);kicked=true;kickPosition=body.position.clone();
+ assert.ok(kicked,'expected explicit wall kick');
  const launchHorizontal=Math.hypot(body.velocity.x,body.velocity.z);
  assert.ok(launchHorizontal>=incomingHorizontal*.70,`kick bled too much speed: ${launchHorizontal.toFixed(1)} from ${incomingHorizontal.toFixed(1)}`);
  const normal=body.wallJumpFacing.clone().setY(0);
@@ -66,6 +70,16 @@ test('wall kick keeps momentum and stays on a clean post-jump trajectory for 0.6
  assert.equal(body.grounded,false);
  assert.ok(body.position.z<kickPosition.z-12,'post-jump path should keep meaningful forward progress');
  assert.ok(Math.abs(body.position.x-kickPosition.x)<12,'wall clearance must not become a large sideways throw');
+});
+
+test('anchor selection follows movement intent instead of choosing a nearer off-axis facade',()=>{
+ const city=makeCity(),position=new Vector3(0,22,0);
+ const rightward=new Vector3(1,0,0);
+ const target=chooseAnchor(position,rightward,city,null,{desiredDirection:rightward,idealRopeLength:58});
+ assert.ok(target);
+ const travel=target.point.clone().sub(position).setY(0).normalize();
+ assert.ok(travel.dot(rightward)>.65,'anchor must be strongly aligned with movement intent');
+ assert.ok(target.point.x>30,'rightward intent should choose the right side of the avenue');
 });
 
 test('landing chooses roll, skid and stick from impact plus stop intent',()=>{
