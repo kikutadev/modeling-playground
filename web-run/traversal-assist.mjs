@@ -91,14 +91,20 @@ export function applySwingAssist(body, dt, intent, tuning = DEFAULT_TRAVERSAL_TU
   if (tangent.lengthSq() > 1e-5) tangent.normalize();
 
   const throttle = clamp(intent?.throttle ?? 1, 0, 1);
+  const braking=Boolean(intent?.braking);
   const forwardSpeed = body.velocity.dot(tangent);
-  const missingSpeed = Math.max(0, tuning.targetSwingSpeed - forwardSpeed);
-  const acceleration = Math.min(tuning.maxSwingAssist, missingSpeed * tuning.swingGain) * (0.35 + throttle * 0.65);
-  body.velocity.addScaledVector(tangent, acceleration * dt);
+  if(braking){
+    const brakingAcceleration=Math.min(28,Math.max(0,forwardSpeed)*1.25);
+    body.velocity.addScaledVector(tangent,-brakingAcceleration*dt);
+  }else{
+    const missingSpeed = Math.max(0, tuning.targetSwingSpeed - forwardSpeed);
+    const acceleration = Math.min(tuning.maxSwingAssist, missingSpeed * tuning.swingGain) * (0.35 + throttle * 0.65);
+    body.velocity.addScaledVector(tangent, acceleration * dt);
+  }
 
   // Pump hardest near the bottom of the arc. This is the primary "whoosh" energy source.
   const bottomness = clamp((-ropeDirection.y - 0.28) / 0.72, 0, 1);
-  if (forwardSpeed > -2) body.velocity.addScaledVector(tangent, tuning.bottomPump * bottomness * throttle * dt);
+  if (!braking&&forwardSpeed > -2) body.velocity.addScaledVector(tangent, tuning.bottomPump * bottomness * throttle * dt);
 
   // Near-street swings should skim the ground rather than bury the character into it.
   const lowFactor = clamp((5.5 - body.position.y) / 4.5, 0, 1);
@@ -107,11 +113,11 @@ export function applySwingAssist(body, dt, intent, tuning = DEFAULT_TRAVERSAL_TU
   }
 
   // Preserve a little energy during the second half of the arc without turning it into flight.
-  if (body.velocity.y > 0 && bottomness > 0.25) {
+  if (!braking&&body.velocity.y > 0 && bottomness > 0.25) {
     body.velocity.addScaledVector(UP, tuning.risingLift * bottomness * throttle * dt);
   }
 
-  const autoReel = body.position.y < 7 || (body.velocity.length() < 27 && throttle > 0.35);
+  const autoReel = !braking&&(body.position.y < 7 || (body.velocity.length() < 27 && throttle > 0.35));
   return {autoReel, bottomness, assisted: true};
 }
 

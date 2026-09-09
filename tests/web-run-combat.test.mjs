@@ -54,3 +54,12 @@ test('limb IK keeps both segments at their defined lengths across extreme target
  const {joint,end}=solveLimb(start,target,new Vector3(-1,0,.2),.39,.37);assert.ok(Math.abs(start.distanceTo(joint)-.39)<1e-7);assert.ok(Math.abs(joint.distanceTo(end)-.37)<1e-7);
  }
 });
+
+test('large drone silhouette has a forgiving matching web-hit volume',()=>{
+ const {body,combat}=setup();
+ combat.drones.forEach((d,i)=>{if(i)d.hp=0;});
+ combat.drones[0].position.set(3,24,-66);combat.drones[0].home.copy(combat.drones[0].position);
+ combat.projectiles.push({kind:'web',position:new Vector3(0,24,-60),velocity:new Vector3(0,0,-120),life:1});
+ combat.step(.1,body);
+ assert.equal(combat.drones[0].hp,2);
+});

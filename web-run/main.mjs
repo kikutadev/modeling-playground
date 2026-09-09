@@ -38,7 +38,7 @@ function buildBoxBatches(){
   }
   boxBatches.clear();
 }
-box(0,-.35,0,460,.7,620,asphalt);
+box(0,-.35,0,760,.7,860,asphalt);
 const facadeMats=[0x466b7a,0x6e8388,0x8a9290,0x365766,0x9b8777].map(mat),windows=[];
 for(const building of buildings){
   if(building.kind==='atrium'){
@@ -56,15 +56,15 @@ for(const building of buildings){
 const winmat=new T.MeshStandardMaterial({color:0xb6d6d7,emissive:0x759da6,emissiveIntensity:.22,roughness:.3,metalness:.5});
 const winmesh=new T.InstancedMesh(geo,winmat,windows.length),dummy=new T.Object3D();
 windows.forEach((window,index)=>{dummy.position.set(...window.slice(0,3));dummy.scale.set(...window.slice(3));dummy.updateMatrix();winmesh.setMatrixAt(index,dummy.matrix);winmesh.setColorAt(index,new T.Color(index%9===0?0xffdb91:index%4===0?0x456776:0xb6d6d7));});scene.add(winmesh);
-const paint=mat(0xd7cba7);for(let z=-270;z<280;z+=12)box(0,.015,z,.16,.025,5,paint);
+const paint=mat(0xd7cba7);for(let z=-390;z<400;z+=12)box(0,.015,z,.16,.025,5,paint);
 const carMats=[0xcd775c,0xe0d0b2,0x486576].map(mat);
-for(let index=0;index<65;index++){const z=-260+index*8.1,x=index%2?6:-6;box(x,.6,z,1.8,1.1,3.8,carMats[index%3]);box(x,1.3,z+.2,1.65,.5,1.9,roof);}
+for(let index=0;index<92;index++){const z=-370+index*8.1,x=index%2?7:-7;box(x,.6,z,1.8,1.1,3.8,carMats[index%3]);box(x,1.3,z+.2,1.65,.5,1.9,roof);}
 const lobbyLight=new T.MeshBasicMaterial({color:0xa8fff0});
-for(let z=-160;z<=-128;z+=4)box(0,45.9,z,39,.08,.13,lobbyLight);for(const x of [-19.5,19.5])box(x,17.08,-145,.16,.08,36,lobbyLight);
+for(let z=-164;z<=-126;z+=4)box(0,45.9,z,56,.08,.13,lobbyLight);for(const x of [-29.5,29.5])box(x,17.08,-145,.16,.08,42,lobbyLight);
 const signCanvas=document.createElement('canvas');signCanvas.width=1024;signCanvas.height=128;
 const ink=signCanvas.getContext('2d');ink.fillStyle='#1d3e4b';ink.fillRect(0,0,1024,128);ink.fillStyle='#c1e5db';ink.font='600 62px sans-serif';ink.textAlign='center';ink.fillText('SKY GALLERY',512,88);
 const signMap=new T.CanvasTexture(signCanvas);signMap.colorSpace=T.SRGBColorSpace;
-const sign=new T.Mesh(new T.PlaneGeometry(20,2.5),new T.MeshBasicMaterial({map:signMap}));sign.position.set(0,48,-125.98);scene.add(sign);
+const sign=new T.Mesh(new T.PlaneGeometry(28,3.2),new T.MeshBasicMaterial({map:signMap}));sign.position.set(0,48,-122.98);scene.add(sign);
 buildBoxBatches();
 
 const hero=createHero();scene.add(hero.root);
@@ -184,10 +184,10 @@ function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWi
 function snapCamera(){cameraForward.copy(forward);chaseOffset.copy(cameraForward).multiplyScalar(-9).add(new T.Vector3(0,4,0));aimOffset.copy(cameraForward).multiplyScalar(4).add(new T.Vector3(0,1,0));camera.position.copy(body.position).add(chaseOffset);cameraTarget.copy(body.position).add(aimOffset);camera.lookAt(cameraTarget);}snapCamera();
 
 function getContextAction(){
-  const enemy=combat.target(body.position,forward,76);
-  if(enemy&&body.position.distanceTo(enemy.position)<21)return {kind:'KICK',label:'ATTACK'};
-  if(enemy&&body.position.distanceTo(enemy.position)<48)return {kind:'SHOT',label:'ATTACK'};
+  const enemy=combat.target(body.position,forward);
+  if(enemy&&body.position.distanceTo(enemy.position)<28)return {kind:'KICK',label:'ATTACK'};
   if(!body.anchor&&!body.grounded&&body.time-body.zipTime>traversalTuning.zipCooldown)return {kind:'ZIP',label:'ZIP'};
+  if(enemy&&body.position.distanceTo(enemy.position)<64)return {kind:'SHOT',label:'ATTACK'};
   return null;
 }
 function isCombatThreatened(){return combat.drones.some(drone=>drone.hp>0&&drone.charge>.32&&body.position.distanceTo(drone.position)<64);}
@@ -216,17 +216,19 @@ function step(){
   const moveRight=Number(keys.has('KeyD'))-Number(keys.has('KeyA'))+(touchCapable?mobileMove.x*.18:0);
   const steer=new T.Vector3().addScaledVector(forward,moveForward).addScaledVector(right,moveRight);
   const before=body.position.clone();
-  const throttle=Math.max(.25,Math.min(1,Math.max(0,moveForward)));
-  const turnIntent=touchCapable?Math.abs(mobileMove.x):Math.min(1,Math.abs(moveRight));
-  const assistState=applySwingAssist(body,STEP,{desiredDirection:forward,throttle},traversalTuning);
+  const brakeIntent=touchCapable?mobileMove.y>.42:keys.has('KeyS');
+  const moveMagnitude=Math.min(1,Math.hypot(moveForward,moveRight));
+  const throttle=brakeIntent?0:Math.max(.25,Math.min(1,Math.max(0,moveForward)));
+  const turnIntent=brakeIntent?0:(touchCapable?Math.abs(mobileMove.x):Math.min(1,Math.abs(moveRight)));
+  const assistState=applySwingAssist(body,STEP,{desiredDirection:forward,throttle,braking:brakeIntent},traversalTuning);
   applyTurnAssist(body,STEP,{desiredDirection:forward,turnIntent},traversalTuning);
   const dive=keys.has('ShiftLeft')||keys.has('ShiftRight')||(touchCapable&&!body.grounded&&mobileMove.y>.78);
-  body.step(STEP,{steer,forward:keys.has('KeyW')||mobileMove.y<-.18,dive,reel:keys.has('KeyE')||shouldAutoReel(body,assistState)});
+  body.step(STEP,{steer,forward:!brakeIntent&&(keys.has('KeyW')||mobileMove.y<-.18),brake:brakeIntent,moveMagnitude,dive,reel:keys.has('KeyE')||shouldAutoReel(body,assistState)});
   applyReleaseAssist(body,STEP,traversalTuning);
   const webHeld=keys.has('Space')||mouseSwing||mobileWebHeld;
   const attachAge=body.anchor?body.time-body.attachTime:0;
   if(body.anchor&&webHeld&&attachAge>.72&&(body.velocity.y>7||attachAge>2.15)){releaseWeb();nextAutoAttach=body.time+.20;}
-  else if(!body.anchor&&webHeld&&body.time>=nextAutoAttach&&body.time-body.releaseTime>.18){shoot();nextAutoAttach=body.time+(body.anchor?.5:.24);}
+  else if(!body.anchor&&webHeld&&!brakeIntent&&body.time>=nextAutoAttach&&body.time-body.releaseTime>.18){shoot();nextAutoAttach=body.time+(body.anchor?.5:.24);}
   combat.step(STEP,body);if(!finished)elapsed+=STEP;
   if(body.outOfBounds){const safe=checkpoint?ringPoints[checkpoint-1].clone().add(new T.Vector3(0,2,5)):undefined;body.respawn(safe);before.copy(body.position);elapsed+=5;notice('エリア外 — 通過地点へ戻りました（+5秒）',2);snapCamera();}
   if(!combatTaught&&checkpoint>0&&body.time>noticeUntil&&combat.target(body.position,forward,60)){combatTaught=true;if(!touchCapable)notice('警備ドローン！ Fで糸 → 近距離Qで蹴り',3);}
@@ -264,9 +266,10 @@ function render(now){
 
   $('#swing-toggle').setAttribute('aria-pressed',String(!!body.anchor));$('#swing-toggle').innerHTML=body.anchor?'糸を離す <small>G · 切替</small>':'糸を掛ける <small>G · 切替</small>';
   $('#speed strong').textContent=Math.round(speed*3.6);
-  $('#state').textContent=recentZip?'WEB ZIP':body.time-body.dodgeTime<.42?'DODGE':body.anchor?'WEB SWING':body.wall?(body.velocity.y>1?'WALL RUN':'WALL CONTACT'):body.grounded?'ROOFTOP / STREET':body.velocity.y>2?'RISING':'FREE FALL';
+  const landingLabel=body.grounded&&body.time<body.landingUntil?(body.landingType==='roll'?'LANDING ROLL':body.landingType==='skid'?'BRAKE SKID':body.landingType==='stick'?'STICK LANDING':null):null;
+  $('#state').textContent=landingLabel??(recentZip?'WEB ZIP':body.time-body.dodgeTime<.42?'DODGE':body.anchor?'WEB SWING':body.wall?(body.velocity.y>1?'WALL RUN':'WALL CONTACT'):body.grounded?'ROOFTOP / STREET':body.velocity.y>2?'RISING':'FREE FALL');
   $('#shield').textContent='◆'.repeat(combat.health)+'◇'.repeat(3-combat.health);$('#security').textContent=`DRONES ${combat.defeated} / 3`;
-  const enemy=combat.target(body.position,forward);$('#combat-hint').textContent=!touchCapable&&enemy?`${Math.round(body.position.distanceTo(enemy.position))} m · F 糸${body.position.distanceTo(enemy.position)<21?' / Q 飛び蹴り':''}`:'';
+  const enemy=combat.target(body.position,forward);$('#combat-hint').textContent=!touchCapable&&enemy?`${Math.round(body.position.distanceTo(enemy.position))} m · F 糸${body.position.distanceTo(enemy.position)<28?' / Q 飛び蹴り':''}`:'';
   $('#progress').textContent=`${checkpoint} / ${rings.length}`;
   $('#next').textContent=checkpoint<rings.length?`ROUTE ${Math.round(body.position.distanceTo(ringPoints[checkpoint]))} m`:finished?`CLEAR ${elapsed.toFixed(1)} s · BEST ${best?.toFixed(1)} s`:'DRONES REMAIN';
   const goal=checkpoint<rings.length?ringPoints[checkpoint]:combat.drones.filter(drone=>drone.hp>0).sort((a,b)=>a.position.distanceTo(body.position)-b.position.distanceTo(body.position))[0]?.position;
@@ -281,5 +284,5 @@ function render(now){
 }
 requestAnimationFrame(render);
 
-export function readPlayState(){return {position:body.position.toArray(),velocity:body.velocity.toArray(),yaw,time:body.time,attached:!!body.anchor,grounded:body.grounded,wall:!!body.wall,checkpoint,health:combat.health,defeated:combat.defeated,finished,failed,paused,zipTime:body.zipTime};}
+export function readPlayState(){return {position:body.position.toArray(),velocity:body.velocity.toArray(),yaw,time:body.time,attached:!!body.anchor,grounded:body.grounded,wall:!!body.wall,checkpoint,health:combat.health,defeated:combat.defeated,finished,failed,paused,zipTime:body.zipTime,landingType:body.landingType,landingUntil:body.landingUntil};}
 if(new URLSearchParams(location.search).has('e2e'))globalThis.__threadlineReadState=readPlayState;

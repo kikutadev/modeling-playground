@@ -26,3 +26,37 @@ test('roof landing and wall contact do not tunnel at high speed',()=>{
  body.position.set(b.box.min.x-1,12,b.z);body.velocity.set(62,0,0);for(let i=0;i<6;i++)body.step(STEP);
  assert.ok(body.position.x<b.box.min.x);assert.ok(body.wall);body.jump(f);assert.ok(body.velocity.x<0);assert.ok(body.velocity.y>0);
 });
+
+test('landing chooses roll, skid and stick from impact plus stop intent',()=>{
+ const land=(velocity,input)=>{const body=new SwingBody([]);body.position.set(0,1.35,0);body.velocity.copy(velocity);for(let i=0;i<24&&!body.grounded;i++)body.step(STEP,input);return body;};
+ const roll=land(new Vector3(0,-18,-30),{brake:true,moveMagnitude:1});assert.equal(roll.landingType,'roll');
+ const skid=land(new Vector3(0,-4,-14),{brake:true,moveMagnitude:1});assert.equal(skid.landingType,'skid');
+ const stick=land(new Vector3(0,-4,-5),{moveMagnitude:0});assert.equal(stick.landingType,'stick');
+});
+
+test('reverse input can actually bleed free-flight and ground speed',()=>{
+ const air=new SwingBody([]);air.position.set(0,24,0);air.velocity.set(0,0,-40);air.grounded=false;
+ for(let i=0;i<120;i++)air.step(STEP,{brake:true,moveMagnitude:1});
+ assert.ok(Math.hypot(air.velocity.x,air.velocity.z)<10);
+ const ground=new SwingBody([]);ground.position.set(0,1.1,0);ground.velocity.set(0,0,-26);ground.grounded=true;
+ for(let i=0;i<45;i++)ground.step(STEP,{brake:true,moveMagnitude:1});
+ assert.ok(Math.hypot(ground.velocity.x,ground.velocity.z)<2.5);
+});
+
+test('city reads as a larger urban canyon while leaving a wide central avenue',()=>{
+ const city=makeCity().filter(b=>b.kind!=='atrium'&&b.x!==0);
+ assert.ok(Math.max(...city.map(b=>b.h))>130);
+ assert.ok(Math.max(...city.map(b=>Math.abs(b.x)))>=290);
+ const nearestFacade=Math.min(...city.map(b=>Math.abs(b.x)-b.w/2));
+ assert.ok(nearestFacade>35);
+});
+
+test('ground brake starts a visible skid state and can retrigger after release',()=>{
+ const body=new SwingBody([]);body.position.set(0,1.1,0);body.velocity.set(0,0,-22);body.grounded=true;
+ body.step(STEP,{brake:true,moveMagnitude:1});
+ assert.equal(body.landingType,'skid');assert.ok(body.landingUntil>body.time);
+ for(let i=0;i<60;i++)body.step(STEP,{moveMagnitude:0});
+ body.position.y=1.1;body.grounded=true;body.velocity.set(0,0,-18);body.landingType='none';
+ body.step(STEP,{brake:true,moveMagnitude:1});
+ assert.equal(body.landingType,'skid');
+});

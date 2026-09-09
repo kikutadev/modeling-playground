@@ -8,10 +8,10 @@ export function makeCity() {
   const buildings = [];
   let seed = 1977;
   const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  for (let x = -4; x <= 4; x++) for (let z = -6; z <= 6; z++) {
+  for (let x = -5; x <= 5; x++) for (let z = -7; z <= 7; z++) {
     if (x === 0) continue;
-    const w = 18 + rand() * 10, d = 20 + rand() * 8, h = (Math.abs(x)===1?76:26) + rand() * (Math.abs(x)===1?30:65);
-    const cx = x * 40, cz = z * 42;
+    const w = 26 + rand() * 14, d = 28 + rand() * 14, h = (Math.abs(x)===1?96:38) + rand() * (Math.abs(x)===1?46:88);
+    const cx = x * 58, cz = z * 52;
     buildings.push({ id: buildings.length, x: cx, z: cz, w, d, h,
       box: new Box3(new Vector3(cx-w/2, 0, cz-d/2), new Vector3(cx+w/2,h,cz+d/2)) });
   }
@@ -19,7 +19,7 @@ export function makeCity() {
   buildings.push({ id: buildings.length, x:0,z:22,w:16,d:26,h:24,
     box:new Box3(new Vector3(-8,0,9),new Vector3(8,24,35)) });
   // A traversable sky lobby: the opening is real collision-free space, not a painted facade.
-  for (const [x,y,z,w,h,d] of [[0,16,-145,42,2,38],[0,48,-145,42,4,38],[-21,32,-145,2,30,38],[21,32,-145,2,30,38],[-18,7.5,-129,2,15,2],[18,7.5,-129,2,15,2],[-18,7.5,-161,2,15,2],[18,7.5,-161,2,15,2]]) {
+  for (const [x,y,z,w,h,d] of [[0,16,-145,60,2,44],[0,48,-145,60,4,44],[-30,32,-145,2,30,44],[30,32,-145,2,30,44],[-26,7.5,-124,2,15,2],[26,7.5,-124,2,15,2],[-26,7.5,-166,2,15,2],[26,7.5,-166,2,15,2]]) {
     buildings.push({id:buildings.length,x,z,w,h,d,kind:'atrium',
       box:new Box3(new Vector3(x-w/2,y-h/2,z-d/2),new Vector3(x+w/2,y+h/2,z+d/2))});
   }
@@ -96,6 +96,7 @@ export class SwingBody {
     this.lastBuildingId=null; this.outOfBounds=false;this.lastWallTime=-10;this.lastWallNormal=null;
     this.attaches=0; this.releases=0; this.maxSpeed=0; this.distance=0;
     this.zipTime=-10;this.assistedReleaseTime=-10;this.releaseAssist=null;
+    this.landingType='none';this.landingStart=-10;this.landingUntil=-10;this.landingSpeed=0;this.landingImpact=0;this.wasBraking=false;
   }
   attach(target, options={}) {
     if(!target) return false;
@@ -111,14 +112,14 @@ export class SwingBody {
   get canWallJump(){return !!this.wall||(!this.grounded&&this.time-this.lastWallTime<.2);}
   jump(forward) {
     if(this.canWallJump) {
-      this.release(); this.velocity.addScaledVector(this.wall??this.lastWallNormal,15); this.velocity.y=16; this.wall=null;this.lastWallTime=-10;
+      this.release(); this.velocity.addScaledVector(this.wall??this.lastWallNormal,15); this.velocity.y=16; this.wall=null;this.lastWallTime=-10;this.landingType='none';
     } else if(this.grounded) {
-      this.velocity.y=16; this.velocity.addScaledVector(forward,7); this.grounded=false;
+      this.velocity.y=16; this.velocity.addScaledVector(forward,7); this.grounded=false;this.landingType='none';
     }
   }
   respawn(position=SPAWN) {
     this.release(); this.position.copy(position); this.velocity.set(0,0,-16);
-    this.wall=null;this.grounded=false;this.outOfBounds=false;this.lastWallTime=-10;
+    this.wall=null;this.grounded=false;this.outOfBounds=false;this.lastWallTime=-10;this.landingType='none';this.landingUntil=-10;
   }
   dodge(direction) {
     if(this.time-this.dodgeTime<.85) return;
@@ -129,10 +130,25 @@ export class SwingBody {
     const prev=this.position.clone(), v=this.velocity;
     const steer=input.steer?.clone() ?? new Vector3();
     if(steer.lengthSq()>1) steer.normalize();
+    if(this.landingType!=='none'&&this.time>=this.landingUntil)this.landingType='none';
+    const moveMagnitude=clamp(input.moveMagnitude??steer.length(),0,1);
+    const brake=!!input.brake;
+    const brakeStarted=brake&&!this.wasBraking;
+    const neutralStop=this.grounded&&moveMagnitude<.12;
+    const speedBeforeInput=Math.hypot(v.x,v.z);
+    if(this.grounded&&brakeStarted&&speedBeforeInput>8){
+      this.landingType='skid';this.landingStart=this.time;this.landingUntil=this.time+.36;this.landingSpeed=speedBeforeInput;this.landingImpact=0;
+    }
     v.y-= (input.dive ? 38:24)*dt;
     v.addScaledVector(steer,(this.grounded?42:this.anchor?22:13)*dt);
     if(this.wall && input.forward) v.y=Math.max(v.y,9);
-    v.multiplyScalar(Math.exp(-(this.grounded?3.5:.09)*dt));
+    if(brake&&!this.grounded&&!this.anchor){
+      const horizontal=Math.hypot(v.x,v.z),drop=Math.min(horizontal,32*dt);
+      if(horizontal>1e-6){const scale=(horizontal-drop)/horizontal;v.x*=scale;v.z*=scale;}
+    }
+    const landingActive=this.grounded&&this.time<this.landingUntil;
+    const groundDrag=landingActive?(this.landingType==='roll'?4.2:this.landingType==='skid'?10.5:14):brake?11:neutralStop?7.5:3.2;
+    v.multiplyScalar(Math.exp(-(this.grounded?groundDrag:.09)*dt));
     if(v.length()>58) v.setLength(58);
     this.position.addScaledVector(v,dt);
     if(this.anchor) {
@@ -147,6 +163,7 @@ export class SwingBody {
         if(radial>-reelSpeed) v.addScaledVector(offset,-radial-reelSpeed);
       }
     }
+    const impactVelocity=v.clone();
     const wasGrounded=this.grounded;
     this.grounded=false; this.wall=null;
     if(this.position.y<1.1) { this.position.y=1.1; v.y=Math.max(0,v.y); this.grounded=true; }
@@ -181,12 +198,22 @@ export class SwingBody {
       }
     }
     if(this.wall){this.lastWallNormal=this.wall.clone();this.lastWallTime=this.time;}
-    if(this.grounded&&!wasGrounded) this.landTime=this.time;
+    if(this.grounded&&!wasGrounded){
+      this.landTime=this.time;
+      const horizontal=Math.hypot(impactVelocity.x,impactVelocity.z),downward=Math.max(0,-impactVelocity.y);
+      const stopping=brake||moveMagnitude<.18;
+      let type='stick',duration=.20;
+      if(downward>15||(stopping&&horizontal>24)){type='roll';duration=.56;}
+      else if(stopping&&horizontal>8){type='skid';duration=.42;}
+      else if(!stopping&&horizontal>8){type='run';duration=.12;}
+      this.landingType=type;this.landingStart=this.time;this.landingUntil=this.time+duration;this.landingSpeed=horizontal;this.landingImpact=downward;
+    }
     if(this.anchor) {
       const blocked=this.buildings.some(b=>{const t=segmentHit(this.position,this.anchor.point,b.box);return t!==null && t<1-1e-5;});
       if(blocked || this.position.distanceTo(this.anchor.point)>this.ropeLength+2) this.release();
     }
-    this.outOfBounds=this.position.y<-20 || Math.abs(this.position.x)>220 || Math.abs(this.position.z)>295;
+    this.outOfBounds=this.position.y<-20 || Math.abs(this.position.x)>345 || Math.abs(this.position.z)>390;
+    this.wasBraking=brake;
     this.distance+=prev.distanceTo(this.position); this.maxSpeed=Math.max(this.maxSpeed,v.length());
   }
 }

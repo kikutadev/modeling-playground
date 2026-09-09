@@ -59,6 +59,11 @@ export function createHero(){
     const release=releaseAge>=0&&releaseAge<.55?1-T.MathUtils.smoothstep(releaseAge,.02,.48):0;
     const zip=Math.max(0,1-(body.time-(body.zipTime??-10))/.34);
     const landed=Math.max(0,1-(body.time-body.landTime)/.3);
+    const landingActive=body.grounded&&body.time<(body.landingUntil??-10)&&body.landingType!=='run';
+    const landingType=landingActive?body.landingType:'none';
+    const landingDuration=Math.max(.001,(body.landingUntil??body.time)-(body.landingStart??body.time));
+    const landingPhase=landingActive?T.MathUtils.clamp((body.time-body.landingStart)/landingDuration,0,1):1;
+    const landingEase=T.MathUtils.smoothstep(landingPhase,0,1);
     const ropeDirection=swinging?body.position.clone().sub(body.anchor.point).normalize():null;
     const bottomness=ropeDirection?T.MathUtils.clamp((-ropeDirection.y-.18)/.82,0,1):0;
     const attachReach=swinging?1-T.MathUtils.smoothstep(body.time-body.attachTime,.08,.34):0;
@@ -67,19 +72,26 @@ export function createHero(){
     const stretch=descending*(1-bottomness)*Math.min(1,speed/34);
     const swingTuck=Math.max(bottomness*.45,rising*.92);
     const tucked=wall?0:body.grounded?landed*.8:swinging?swingTuck:kick?.35:release*.85+zip*.25+.15;
-    const pose=new T.Quaternion().setFromEuler(new T.Euler(wall?0:body.grounded?-.08:swinging?-.2:Math.min(.9,speed*.014),yaw,0,'YXZ'));
+    const landingPitch=landingType==='skid'?T.MathUtils.lerp(.34,-.04,landingEase):landingType==='stick'?T.MathUtils.lerp(-.22,-.08,landingEase):-.08;
+    const pose=new T.Quaternion().setFromEuler(new T.Euler(wall?0:body.grounded?landingPitch:swinging?-.2:Math.min(.9,speed*.014),yaw,0,'YXZ'));
     if(swinging){const pull=body.anchor.point.clone().sub(body.position).normalize();pose.premultiply(new T.Quaternion().setFromUnitVectors(UP,UP.clone().lerp(pull,.58).normalize()));}
     // A release changes the physical constraint instantly, but the body must not snap with it.
     // Let the torso keep the outgoing swing attitude for a few frames before settling into free flight.
     root.quaternion.slerp(pose,1-Math.exp(-dt*(release>.02?3.2:13)));
     const dodgeAge=body.time-body.dodgeTime;
     rig.rotation.z=dodgeAge<.42?Math.PI*2*T.MathUtils.smoothstep(dodgeAge,0,.42):0;
-    rig.position.y=-landed*.18;
+    rig.rotation.x=landingType==='roll'?-Math.PI*2*landingEase:landingType==='skid'?.10*Math.sin(Math.PI*landingPhase):0;
+    rig.position.y=-landed*.18+(landingType==='roll'?.16*Math.sin(Math.PI*landingPhase):landingType==='skid'?-.07:landingType==='stick'?-.12*(1-landingEase):0);
     root.updateMatrixWorld(true);
-    const stride=(body.grounded||wall)?Math.sin(body.time*(wall?10:14))*Math.min(.48,speed*.06):0;
+    const stride=landingActive?0:(body.grounded||wall)?Math.sin(body.time*(wall?10:14))*Math.min(.48,speed*.06):0;
     const shoulders=[point(-.29,.6,0),point(.29,.6,0)];
     const targets=[point(-.51,.12,-.1-stride),point(.51,.15,-.1+stride)];
     if(swinging){const support=body.webHand,free=1-support,direction=rig.worldToLocal(body.anchor.point.clone()).sub(shoulders[support]).normalize();targets[support].copy(shoulders[support]).addScaledVector(direction,.755);targets[free].set(free===0?-.53:.53,.08,-.20);}
+    else if(body.grounded&&landingActive){
+      if(landingType==='roll'){targets[0].set(-.30,.20,-.14);targets[1].set(.30,.20,-.14);}
+      else if(landingType==='skid'){targets[0].set(-.58,.12,.26);targets[1].set(.58,.20,.18);}
+      else {targets[0].set(-.48,.08,-.22);targets[1].set(.48,.20,.02);}
+    }
     else if(wall){targets[0].set(-.29,.82+stride*.5,-.46);targets[1].set(.29,.82-stride*.5,-.46);}
     else if(zip>.02){targets[0].set(-.30,.42,-.56);targets[1].set(.30,.42,-.56);}
     else if(!body.grounded){
@@ -103,6 +115,11 @@ export function createHero(){
     for(let i=0;i<2;i++){
       const side=i===0?-1:1,hip=point(side*.16,-.23,0);
       const foot=wall?point(side*.21,-.81+stride*side*.6,-.47):point(side*(.19+tucked*.15),-1.10+tucked*(i?.23:.45),tucked*(i?.42:.22)+stride*side);
+      if(body.grounded&&landingActive){
+        if(landingType==='roll')foot.set(side*.24,-.58,.26);
+        else if(landingType==='skid')foot.set(side*.22,-1.02,i===0?-.46:.22);
+        else foot.set(side*.28,-.78,-.18);
+      }
       if(kick&&i===1)foot.set(.17,-.2,-.85);
       const legFollow=(body.grounded||wall)?22:swinging?13:release>.02?4.6:10;
       const legAlpha=poseInitialized?1-Math.exp(-dt*legFollow):1;
