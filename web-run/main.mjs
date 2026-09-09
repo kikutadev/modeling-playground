@@ -83,6 +83,7 @@ let started=false,paused=true,yaw=0,pitch=.13,elapsed=0,checkpoint=0,accumulator
 let best=null;try{best=Number(localStorage.getItem('threadline-best-v2'))||null;}catch{}
 const keys=new Set(),forward=new T.Vector3(0,0,-1),right=new T.Vector3(1,0,0),mobileMove=new T.Vector2();
 let mobileWebHeld=false,lookPointer=null,lookX=0,lookY=0,lookStartX=0,lookStartY=0,lookStartTime=0,movePointer=null,manualLookUntil=-10,pendingWallWeb=null;
+let attackHeld=false,attackHoldPointer=null,attackHoldTargetId=null,attackHoldArmAt=-10,attackHoldNextAt=-10;
 const cameraTarget=new T.Vector3(),cameraDesired=new T.Vector3(),chaseOffset=new T.Vector3(0,4,9),aimOffset=new T.Vector3(0,1,-4),cameraForward=new T.Vector3(0,0,-1);
 
 function notice(text,seconds=2){$('#notice').textContent=text;noticeUntil=body.time+seconds;}
@@ -90,10 +91,12 @@ function direction(){forward.set(-Math.sin(yaw),0,-Math.cos(yaw));right.set(Math
 function movementIntentDirection(){
   const forwardInput=Number(keys.has('KeyW'))-Number(keys.has('KeyS'))+(touchCapable?-mobileMove.y:0);
   const rightInput=Number(keys.has('KeyD'))-Number(keys.has('KeyA'))+(touchCapable?mobileMove.x:0);
-  const desired=new T.Vector3().addScaledVector(forward,forwardInput).addScaledVector(right,rightInput);
+  // Backward input means brake in this traversal scheme; never interpret it as "shoot WEB behind me".
+  const travelForward=forwardInput<-.32?0:forwardInput;
+  const desired=new T.Vector3().addScaledVector(forward,travelForward).addScaledVector(right,rightInput);
   return desired.lengthSq()>.04?desired.normalize():forward.clone();
 }
-function anchorOptions(desiredDirection=movementIntentDirection()){return {desiredDirection,velocity:body.velocity,lateralIntent:0,idealRopeLength:traversalTuning.idealRopeLength};}
+function anchorOptions(desiredDirection=movementIntentDirection()){return {desiredDirection,velocity:body.velocity,lateralIntent:T.MathUtils.clamp(desiredDirection.dot(right),-1,1),idealRopeLength:traversalTuning.idealRopeLength};}
 function chooseTraversalAnchor(desiredDirection=movementIntentDirection()){
   const building=chooseAnchor(body.position,desiredDirection,buildings,body.lastBuildingId,anchorOptions(desiredDirection));
   return combat.webAnchor(body.position,desiredDirection,building);
@@ -109,30 +112,30 @@ function attachTraversalWeb(desiredDirection=movementIntentDirection()){
 function webInputHeld(){return mobileWebHeld||mouseSwing||keys.has('Space');}
 function cancelPendingWallWeb(){pendingWallWeb=null;}
 function processPendingWallWeb(){
-  if(!pendingWallWeb||body.time<pendingWallWeb.fireAt)return;
-  const pending=pendingWallWeb;pendingWallWeb=null;
-  if(pending.requireHeld&&!webInputHeld())return;
+  const pending=pendingWallWeb;if(!pending||body.time<pending.fireAt)return;
+  if(pending.requireHeld&&!webInputHeld()){pendingWallWeb=null;return;}
   const desired=movementIntentDirection();
-  if(!attachTraversalWeb(desired)&&!webZip())notice('移動方向に接続先がありません',.9);
+  if(attachTraversalWeb(desired)){pendingWallWeb=null;return;}
+  if(body.time>=pending.expires){pendingWallWeb=null;notice('移動方向に接続先がありません',.9);}
 }
-function releaseWeb(){const released=releaseWithAssist(body,forward,traversalTuning);if(released&&touchCapable)updateContextUI();return released;}
-function webZip(){if(performWebZip(body,forward,traversalTuning)){tone(760,.07);if(touchCapable)updateContextUI();return true;}return false;}
+function releaseWeb(){const released=releaseWithAssist(body,movementIntentDirection(),traversalTuning);if(released&&touchCapable)updateContextUI();return released;}
+function webZip(){if(performWebZip(body,movementIntentDirection(),traversalTuning)){tone(760,.07);if(touchCapable)updateContextUI();return true;}return false;}
 function shoot({requireHeld=true}={}){
   if(paused)return;
   const desired=movementIntentDirection();
   if(body.canWallJump){
     body.jump(desired);
-    pendingWallWeb={fireAt:body.time+.11,requireHeld};
+    pendingWallWeb={fireAt:body.time+.11,expires:body.time+.46,requireHeld};
     tone(690,.06);return;
   }
   body.jump(desired);
   if(!attachTraversalWeb(desired)&&!webZip())notice('移動方向に接続先がありません',.9);
 }
 function resetTouchState(){
-  mobileMove.set(0,0);mobileWebHeld=false;lookPointer=null;movePointer=null;pendingWallWeb=null;
+  mobileMove.set(0,0);mobileWebHeld=false;lookPointer=null;movePointer=null;pendingWallWeb=null;attackHeld=false;attackHoldPointer=null;attackHoldTargetId=null;attackHoldArmAt=-10;attackHoldNextAt=-10;
   $('#move-knob').style.transform='translate(-50%,-50%)';$('#move-stick').classList.remove('is-held');
   $('#mobile-web').classList.remove('is-held');$('#mobile-web').setAttribute('aria-pressed','false');
-  const context=$('#mobile-context'),dodge=$('#mobile-dodge');if(context)context.hidden=true;if(dodge)dodge.hidden=true;
+  const context=$('#mobile-context'),dodge=$('#mobile-dodge');if(context){context.hidden=true;context.classList.remove('is-held');}if(dodge)dodge.hidden=true;
 }
 function restart(){
   body.reset();combat.reset();combatView.reset();finished=false;failed=false;combatTaught=false;swingTaught=false;yaw=0;pitch=.13;checkpoint=0;elapsed=0;keys.clear();mouseSwing=false;resetTouchState();direction();updateRings();snapCamera();
@@ -185,14 +188,29 @@ const endLook=event=>{
   if(duration<360&&Math.abs(dx)>56&&isCombatThreatened()){body.dodge(right.clone().multiplyScalar(dx<0?-1:1));return;}
   if(duration<220&&Math.hypot(dx,dy)<18){
     const action=getContextAction();
-    if(action?.kind==='KICK')combat.kick(body,forward);
-    else if(action?.kind==='SHOT')combat.shoot(body,forward,hero.shotHandWorld);
+    if(action?.kind==='KICK')combat.kick(body,movementIntentDirection());
+    else if(action?.kind==='SHOT')combat.shoot(body,movementIntentDirection(),hero.shotHandWorld);
   }
 };$('#mobile-look-zone').addEventListener('pointerup',endLook);$('#mobile-look-zone').addEventListener('pointercancel',event=>{if(lookPointer===event.pointerId)lookPointer=null;});
 $('#mobile-web').addEventListener('pointerdown',event=>{if(paused)return;event.preventDefault();const element=$('#mobile-web');element.setPointerCapture(event.pointerId);mobileWebHeld=true;element.classList.add('is-held');element.setAttribute('aria-pressed','true');initAudio();if(!body.anchor)shoot({requireHeld:true});});
 function releaseMobileWeb(event){if(!mobileWebHeld)return;mobileWebHeld=false;cancelPendingWallWeb();const element=$('#mobile-web');element.classList.remove('is-held');element.setAttribute('aria-pressed','false');if(!paused)releaseWeb();if(event&&element.hasPointerCapture?.(event.pointerId))element.releasePointerCapture(event.pointerId);}
 $('#mobile-web').addEventListener('pointerup',releaseMobileWeb);$('#mobile-web').addEventListener('pointercancel',releaseMobileWeb);
-$('#mobile-context')?.addEventListener('click',event=>{event.preventDefault();if(!paused){initAudio();runContextAction();}});
+const contextButton=$('#mobile-context');
+contextButton?.addEventListener('pointerdown',event=>{
+  if(paused)return;event.preventDefault();initAudio();
+  const action=getContextAction();
+  if(action?.kind==='ZIP'){webZip();return;}
+  if(action?.kind!=='KICK'&&action?.kind!=='SHOT')return;
+  attackHeld=true;attackHoldPointer=event.pointerId;attackHoldTargetId=action.targetId;attackHoldArmAt=body.time+.16;attackHoldNextAt=attackHoldArmAt;
+  contextButton.classList.add('is-held');contextButton.setPointerCapture?.(event.pointerId);
+});
+function endAttackHold(event){
+  if(attackHoldPointer!==event.pointerId)return;
+  const armed=body.time>=attackHoldArmAt;
+  attackHeld=false;attackHoldPointer=null;attackHoldTargetId=null;contextButton?.classList.remove('is-held');
+  if(!armed&&!paused)runContextAction();
+}
+contextButton?.addEventListener('pointerup',endAttackHold);contextButton?.addEventListener('pointercancel',endAttackHold);
 $('#mobile-dodge')?.addEventListener('click',event=>{event.preventDefault();if(!paused){initAudio();body.dodge(right.clone().multiplyScalar(mobileMove.x<-.15?-1:1));updateContextUI();}});
 window.addEventListener('blur',()=>{
   const hadDesktopWebInput=!touchCapable&&(mouseSwing||keys.has('Space'));
@@ -212,10 +230,10 @@ function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWi
 function snapCamera(){cameraForward.copy(forward);chaseOffset.copy(cameraForward).multiplyScalar(-9).add(new T.Vector3(0,4,0));aimOffset.copy(cameraForward).multiplyScalar(4).add(new T.Vector3(0,1,0));camera.position.copy(body.position).add(chaseOffset);cameraTarget.copy(body.position).add(aimOffset);camera.lookAt(cameraTarget);}snapCamera();
 
 function getContextAction(){
-  const enemy=combat.target(body.position,forward);
-  if(enemy&&body.position.distanceTo(enemy.position)<DRONE_KICK_RANGE)return {kind:'KICK',label:'ATTACK'};
+  const enemy=combat.target(body.position,movementIntentDirection());
+  if(enemy&&body.position.distanceTo(enemy.position)<DRONE_KICK_RANGE)return {kind:'KICK',label:'ATTACK',targetId:enemy.id};
   if(!body.anchor&&!body.grounded&&body.time-body.zipTime>traversalTuning.zipCooldown)return {kind:'ZIP',label:'ZIP'};
-  if(enemy&&body.position.distanceTo(enemy.position)<TITAN_SHOT_RANGE)return {kind:'SHOT',label:'ATTACK'};
+  if(enemy&&body.position.distanceTo(enemy.position)<TITAN_SHOT_RANGE)return {kind:'SHOT',label:'ATTACK',targetId:enemy.id};
   return null;
 }
 function isCombatThreatened(){return combat.drones.some(drone=>drone.hp>0&&drone.charge>.32&&body.position.distanceTo(drone.position)<TITAN_THREAT_RANGE);}
@@ -223,16 +241,28 @@ function updateContextUI(){
   if(!touchCapable)return;
   const context=$('#mobile-context'),dodge=$('#mobile-dodge');if(!context||!dodge)return;
   if(!started||paused){context.hidden=true;dodge.hidden=true;delete context.dataset.kind;return;}
-  const action=getContextAction();context.hidden=!action;
-  if(action){context.textContent=action.label;context.dataset.kind=action.kind;}else delete context.dataset.kind;
+  if(attackHeld){context.hidden=false;context.textContent='ATTACK';context.dataset.kind='ATTACK';}
+  else {const action=getContextAction();context.hidden=!action;if(action){context.textContent=action.label;context.dataset.kind=action.kind;}else delete context.dataset.kind;}
   dodge.hidden=!isCombatThreatened();
 }
 function runContextAction(){
   const action=getContextAction();if(!action)return;
   if(action.kind==='ZIP')webZip();
-  else if(action.kind==='KICK')combat.kick(body,forward);
-  else if(action.kind==='SHOT')combat.shoot(body,forward,hero.shotHandWorld);
+  else if(action.kind==='KICK')combat.kick(body,movementIntentDirection());
+  else if(action.kind==='SHOT')combat.shoot(body,movementIntentDirection(),hero.shotHandWorld);
   updateContextUI();
+}
+
+function advanceAttackHold(){
+  if(!attackHeld||paused||body.time<attackHoldArmAt||body.time<attackHoldNextAt)return;
+  const target=combat.drones[attackHoldTargetId];
+  if(!target||target.hp<=0){attackHoldNextAt=body.time+.12;return;}
+  const desired=target.position.clone().sub(body.position).setY(0);
+  if(desired.lengthSq()<1e-6)desired.copy(movementIntentDirection());else desired.normalize();
+  const distance=body.position.distanceTo(target.position);
+  if(distance<DRONE_KICK_RANGE&&combat.kick(body,desired))attackHoldNextAt=body.time+.70;
+  else if(distance<TITAN_SHOT_RANGE&&combat.shoot(body,desired,hero.shotHandWorld))attackHoldNextAt=body.time+.55;
+  else attackHoldNextAt=body.time+.12;
 }
 
 function step(){
@@ -257,7 +287,7 @@ function step(){
   // then attaches after a short clearance beat instead of auto-jumping on contact.
   processPendingWallWeb();
   applyReleaseAssist(body,STEP,traversalTuning);
-  combat.step(STEP,body);if(!finished)elapsed+=STEP;
+  combat.step(STEP,body);advanceAttackHold();if(!finished)elapsed+=STEP;
   if(body.outOfBounds){const safe=checkpoint?ringPoints[checkpoint-1].clone().add(new T.Vector3(0,2,5)):undefined;body.respawn(safe);before.copy(body.position);elapsed+=5;notice('エリア外 — 通過地点へ戻りました（+5秒）',2);snapCamera();}
   if(!combatTaught&&checkpoint>0&&body.time>noticeUntil&&combat.target(body.position,forward,135)){combatTaught=true;if(!touchCapable)notice('大型迎撃機！ Fでコアへ糸 → 近距離Qで攻撃',3);}
   for(const event of combat.drainEvents()){
@@ -298,7 +328,7 @@ function render(now){
   const landingLabel=body.grounded&&body.time<body.landingUntil?(body.landingType==='roll'?'LANDING ROLL':body.landingType==='skid'?'BRAKE SKID':body.landingType==='stick'?'STICK LANDING':null):null;
   $('#state').textContent=landingLabel??(recentZip?'WEB ZIP':body.time-body.dodgeTime<.42?'DODGE':body.anchor?'WEB SWING':body.wall?(body.velocity.y>1?'WALL RUN':'WALL CONTACT'):body.grounded?'ROOFTOP / STREET':body.velocity.y>2?'RISING':'FREE FALL');
   $('#shield').textContent='◆'.repeat(combat.health)+'◇'.repeat(3-combat.health);$('#security').textContent=`TITANS ${combat.defeated} / 3`;
-  const enemy=combat.target(body.position,forward);$('#combat-hint').textContent=!touchCapable&&enemy?`${Math.round(body.position.distanceTo(enemy.position))} m · F 糸${body.position.distanceTo(enemy.position)<DRONE_KICK_RANGE?' / Q 飛び蹴り':''}`:'';
+  const enemy=combat.target(body.position,movementIntentDirection());$('#combat-hint').textContent=!touchCapable&&enemy?`${Math.round(body.position.distanceTo(enemy.position))} m · F 糸${body.position.distanceTo(enemy.position)<DRONE_KICK_RANGE?' / Q 飛び蹴り':''}`:'';
   $('#progress').textContent=`${checkpoint} / ${rings.length}`;
   $('#next').textContent=checkpoint<rings.length?`ROUTE ${Math.round(body.position.distanceTo(ringPoints[checkpoint]))} m`:finished?`CLEAR ${elapsed.toFixed(1)} s · BEST ${best?.toFixed(1)} s`:'TITANS REMAIN';
   const goal=checkpoint<rings.length?ringPoints[checkpoint]:combat.drones.filter(drone=>drone.hp>0).sort((a,b)=>a.position.distanceTo(body.position)-b.position.distanceTo(body.position))[0]?.position;
@@ -313,7 +343,7 @@ function render(now){
 }
 requestAnimationFrame(render);
 
-export function readPlayState(){const intent=movementIntentDirection();return {position:body.position.toArray(),velocity:body.velocity.toArray(),yaw,time:body.time,attached:!!body.anchor,pendingWallWeb:!!pendingWallWeb,intentDirection:intent.toArray(),candidatePoint:candidate?.point?.toArray?.()??null,anchorKind:body.anchor?.kind??null,anchorEnemyId:body.anchor?.enemyId??null,anchorPoint:body.anchor?.point?.toArray?.()??null,titans:combat.drones.map(d=>({id:d.id,position:d.position.toArray(),hp:d.hp})),grounded:body.grounded,wall:!!body.wall,wallJumpTime:body.wallJumpTime,wallJumpFacing:body.wallJumpFacing.toArray(),checkpoint,health:combat.health,defeated:combat.defeated,finished,failed,paused,zipTime:body.zipTime,landingType:body.landingType,landingUntil:body.landingUntil};}
+export function readPlayState(){const intent=movementIntentDirection();return {position:body.position.toArray(),velocity:body.velocity.toArray(),yaw,time:body.time,attached:!!body.anchor,pendingWallWeb:!!pendingWallWeb,intentDirection:intent.toArray(),candidatePoint:candidate?.point?.toArray?.()??null,anchorKind:body.anchor?.kind??null,anchorEnemyId:body.anchor?.enemyId??null,anchorPoint:body.anchor?.point?.toArray?.()??null,titans:combat.drones.map(d=>({id:d.id,position:d.position.toArray(),hp:d.hp})),grounded:body.grounded,wall:!!body.wall,wallJumpTime:body.wallJumpTime,wallJumpFacing:body.wallJumpFacing.toArray(),attackHeld,attackHoldTargetId,shotAt:combat.shotAt,kickAt:combat.kickAt,checkpoint,health:combat.health,defeated:combat.defeated,finished,failed,paused,zipTime:body.zipTime,landingType:body.landingType,landingUntil:body.landingUntil};}
 const e2eParams=new URLSearchParams(location.search);
 if(e2eParams.has('e2e')){
   globalThis.__threadlineReadState=readPlayState;
@@ -325,6 +355,12 @@ if(e2eParams.has('e2e')){
       body.grounded=false;body.wall=null;body.lastWallTime=-10;body.lastWallNormal=null;body.lastWallImpactVelocity=null;body.wallJumpTime=-10;
       yaw=0;pitch=.13;direction();snapCamera();
       return {buildingId:wallBuilding.id,position:body.position.toArray(),velocity:body.velocity.toArray()};
+    },
+    placeForAttack(){
+      const target=combat.drones[0];target.position.copy(target.home);target.stunUntil=combat.time+5;
+      body.release();body.position.copy(target.position).add(new T.Vector3(0,0,30));body.velocity.set(0,0,0);
+      body.grounded=false;body.wall=null;yaw=0;pitch=.13;direction();snapCamera();
+      return {targetId:target.id,position:body.position.toArray(),target:target.position.toArray()};
     }
   };
 }
