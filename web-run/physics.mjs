@@ -87,6 +87,13 @@ export function chooseAnchor(position, forward, buildings, previousBuildingId=nu
   return best;
 }
 
+export function kickFreshWallContact(body, hadWall, forward) {
+  if(hadWall||!body.wall||body.grounded||body.anchor)return false;
+  const before=body.wallJumpTime;
+  body.jump(forward);
+  return body.wallJumpTime!==before;
+}
+
 export class SwingBody {
   constructor(buildings) { this.buildings=buildings; this.reset(); }
   reset() {
@@ -94,6 +101,7 @@ export class SwingBody {
     this.anchor=null; this.webHand=0; this.ropeLength=0; this.grounded=false; this.wall=null;
     this.time=0; this.releaseTime=-10; this.landTime=-10; this.dodgeTime=-10;
     this.lastBuildingId=null; this.outOfBounds=false;this.lastWallTime=-10;this.lastWallNormal=null;
+    this.wallJumpTime=-10;this.wallJumpFacing=new Vector3(0,0,-1);
     this.attaches=0; this.releases=0; this.maxSpeed=0; this.distance=0;
     this.zipTime=-10;this.assistedReleaseTime=-10;this.releaseAssist=null;
     this.landingType='none';this.landingStart=-10;this.landingUntil=-10;this.landingSpeed=0;this.landingImpact=0;this.wasBraking=false;
@@ -112,7 +120,21 @@ export class SwingBody {
   get canWallJump(){return !!this.wall||(!this.grounded&&this.time-this.lastWallTime<.2);}
   jump(forward) {
     if(this.canWallJump) {
-      this.release(); this.velocity.addScaledVector(this.wall??this.lastWallNormal,15); this.velocity.y=16; this.wall=null;this.lastWallTime=-10;this.landingType='none';
+      const normal=(this.wall??this.lastWallNormal).clone().setY(0).normalize();
+      const desired=(forward?.clone()??normal.clone()).setY(0);
+      if(desired.lengthSq()>1e-8)desired.normalize();else desired.copy(normal);
+      // Never launch back through the facade. Preserve the player's heading as much as possible,
+      // while guaranteeing a strong outward component so a wall contact becomes a readable kick-off.
+      const inward=desired.dot(normal);
+      if(inward<0)desired.addScaledVector(normal,-inward);
+      if(desired.lengthSq()>1e-8)desired.normalize();else desired.copy(normal);
+      const launch=normal.clone().multiplyScalar(.68).addScaledVector(desired,.82).normalize();
+      const carry=this.velocity.clone().setY(0).multiplyScalar(.22);
+      this.release();
+      this.velocity.copy(carry).addScaledVector(launch,19);
+      this.velocity.y=16;
+      this.wallJumpTime=this.time;this.wallJumpFacing.copy(launch);
+      this.wall=null;this.lastWallTime=-10;this.landingType='none';
     } else if(this.grounded) {
       this.velocity.y=16; this.velocity.addScaledVector(forward,7); this.grounded=false;this.landingType='none';
     }

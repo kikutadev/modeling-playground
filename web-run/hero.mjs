@@ -55,6 +55,8 @@ export function createHero(){
     yaw+=Math.atan2(Math.sin(desired-yaw),Math.cos(desired-yaw))*Math.min(1,dt*12);
     const swinging=!!body.anchor;
     const kick=combat&&combat.time-combat.kickAt<.5;
+    const wallJumpAge=body.time-(body.wallJumpTime??-10);
+    const wallJump=wallJumpAge>=0&&wallJumpAge<.38?1-T.MathUtils.smoothstep(wallJumpAge,.03,.36):0;
     const releaseAge=body.time-body.releaseTime;
     const release=releaseAge>=0&&releaseAge<.55?1-T.MathUtils.smoothstep(releaseAge,.02,.48):0;
     const zip=Math.max(0,1-(body.time-(body.zipTime??-10))/.34);
@@ -71,7 +73,7 @@ export function createHero(){
     const descending=swinging?T.MathUtils.clamp((-velocity.y-1)/18,0,1):0;
     const stretch=descending*(1-bottomness)*Math.min(1,speed/34);
     const swingTuck=Math.max(bottomness*.45,rising*.92);
-    const tucked=wall?0:body.grounded?landed*.8:swinging?swingTuck:kick?.35:release*.85+zip*.25+.15;
+    const tucked=wall?0:body.grounded?landed*.8:swinging?swingTuck:kick?.35:Math.max(release*.85+zip*.25+.15,wallJump*.78);
     const landingPitch=landingType==='skid'?T.MathUtils.lerp(.34,-.04,landingEase):landingType==='stick'?T.MathUtils.lerp(-.22,-.08,landingEase):-.08;
     const pose=new T.Quaternion().setFromEuler(new T.Euler(wall?0:body.grounded?landingPitch:swinging?-.2:Math.min(.9,speed*.014),yaw,0,'YXZ'));
     if(swinging){const pull=body.anchor.point.clone().sub(body.position).normalize();pose.premultiply(new T.Quaternion().setFromUnitVectors(UP,UP.clone().lerp(pull,.58).normalize()));}
@@ -93,6 +95,7 @@ export function createHero(){
       else {targets[0].set(-.48,.08,-.22);targets[1].set(.48,.20,.02);}
     }
     else if(wall){targets[0].set(-.29,.82+stride*.5,-.46);targets[1].set(.29,.82-stride*.5,-.46);}
+    else if(wallJump>.02){targets[0].set(-.58,.34,.16);targets[1].set(.58,.46,.04);}
     else if(zip>.02){targets[0].set(-.30,.42,-.56);targets[1].set(.30,.42,-.56);}
     else if(!body.grounded){
       targets[0].set(-.57,.30,-.02);targets[1].set(.54,.17,-.21);
@@ -114,7 +117,7 @@ export function createHero(){
     }
     for(let i=0;i<2;i++){
       const side=i===0?-1:1,hip=point(side*.16,-.23,0);
-      const foot=wall?point(side*.21,-.81+stride*side*.6,-.47):point(side*(.19+tucked*.15),-1.10+tucked*(i?.23:.45),tucked*(i?.42:.22)+stride*side);
+      const foot=wall?point(side*.21,-.81+stride*side*.6,-.47):wallJump>.02?point(side*.29,-.58+(i?-.08:.10),.20+wallJump*.34):point(side*(.19+tucked*.15),-1.10+tucked*(i?.23:.45),tucked*(i?.42:.22)+stride*side);
       if(body.grounded&&landingActive){
         if(landingType==='roll')foot.set(side*.24,-.58,.26);
         else if(landingType==='skid')foot.set(side*.22,-1.02,i===0?-.46:.22);

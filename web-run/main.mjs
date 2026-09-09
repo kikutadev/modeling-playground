@@ -1,5 +1,5 @@
 import * as T from 'three';
-import {SwingBody,makeCity,chooseAnchor,segmentHit,STEP} from './physics.mjs';
+import {SwingBody,makeCity,chooseAnchor,segmentHit,kickFreshWallContact,STEP} from './physics.mjs';
 import {applySwingAssist,applyTurnAssist,applyReleaseAssist,releaseWithAssist,performWebZip,shouldAutoReel,DEFAULT_TRAVERSAL_TUNING} from './traversal-assist.mjs';
 import {createHero} from './hero.mjs';
 import {AirCombat} from './combat.mjs';
@@ -130,7 +130,7 @@ window.addEventListener('keydown',event=>{
   if(paused)return;keys.add(event.code);
   if(event.code==='Space')shoot();if(event.code==='KeyG')toggleWeb();if(event.code==='KeyR')restart();
   if(event.code==='KeyF')combat.shoot(body,forward,hero.shotHandWorld);
-  if(event.code==='KeyQ'&&!combat.kick(body,forward))notice('敵へ近づいて Q — 21 m以内で飛び蹴り',1.3);
+  if(event.code==='KeyQ'&&!combat.kick(body,forward))notice('敵へ近づいて Q — 48 m以内で飛び蹴り',1.3);
   if(event.code==='KeyX'){if(!webZip())body.dodge(right.clone().multiplyScalar(keys.has('KeyA')?-1:1));}
 });
 window.addEventListener('keyup',event=>{keys.delete(event.code);if(event.code==='Space'&&!mouseSwing&&!paused)releaseWeb();});
@@ -185,12 +185,12 @@ function snapCamera(){cameraForward.copy(forward);chaseOffset.copy(cameraForward
 
 function getContextAction(){
   const enemy=combat.target(body.position,forward);
-  if(enemy&&body.position.distanceTo(enemy.position)<28)return {kind:'KICK',label:'ATTACK'};
+  if(enemy&&body.position.distanceTo(enemy.position)<48)return {kind:'KICK',label:'ATTACK'};
   if(!body.anchor&&!body.grounded&&body.time-body.zipTime>traversalTuning.zipCooldown)return {kind:'ZIP',label:'ZIP'};
-  if(enemy&&body.position.distanceTo(enemy.position)<64)return {kind:'SHOT',label:'ATTACK'};
+  if(enemy&&body.position.distanceTo(enemy.position)<115)return {kind:'SHOT',label:'ATTACK'};
   return null;
 }
-function isCombatThreatened(){return combat.drones.some(drone=>drone.hp>0&&drone.charge>.32&&body.position.distanceTo(drone.position)<64);}
+function isCombatThreatened(){return combat.drones.some(drone=>drone.hp>0&&drone.charge>.32&&body.position.distanceTo(drone.position)<125);}
 function updateContextUI(){
   if(!touchCapable)return;
   const context=$('#mobile-context'),dodge=$('#mobile-dodge');if(!context||!dodge)return;
@@ -215,7 +215,7 @@ function step(){
   const moveForward=Number(keys.has('KeyW'))-Number(keys.has('KeyS'))+mobileForward;
   const moveRight=Number(keys.has('KeyD'))-Number(keys.has('KeyA'))+(touchCapable?mobileMove.x*.18:0);
   const steer=new T.Vector3().addScaledVector(forward,moveForward).addScaledVector(right,moveRight);
-  const before=body.position.clone();
+  const before=body.position.clone(),hadWall=!!body.wall;
   const brakeIntent=touchCapable?mobileMove.y>.42:keys.has('KeyS');
   const moveMagnitude=Math.min(1,Math.hypot(moveForward,moveRight));
   const throttle=brakeIntent?0:Math.max(.25,Math.min(1,Math.max(0,moveForward)));
@@ -224,10 +224,13 @@ function step(){
   applyTurnAssist(body,STEP,{desiredDirection:forward,turnIntent},traversalTuning);
   const dive=keys.has('ShiftLeft')||keys.has('ShiftRight')||(touchCapable&&!body.grounded&&mobileMove.y>.78);
   body.step(STEP,{steer,forward:!brakeIntent&&(keys.has('KeyW')||mobileMove.y<-.18),brake:brakeIntent,moveMagnitude,dive,reel:keys.has('KeyE')||shouldAutoReel(body,assistState)});
+  // A fresh, unanchored facade contact should continue traversal instead of leaving the hero pasted
+  // to the wall. The first beat is always a wall kick; the next WEB input can then choose a new anchor.
+  kickFreshWallContact(body,hadWall,forward);
   applyReleaseAssist(body,STEP,traversalTuning);
   combat.step(STEP,body);if(!finished)elapsed+=STEP;
   if(body.outOfBounds){const safe=checkpoint?ringPoints[checkpoint-1].clone().add(new T.Vector3(0,2,5)):undefined;body.respawn(safe);before.copy(body.position);elapsed+=5;notice('エリア外 — 通過地点へ戻りました（+5秒）',2);snapCamera();}
-  if(!combatTaught&&checkpoint>0&&body.time>noticeUntil&&combat.target(body.position,forward,60)){combatTaught=true;if(!touchCapable)notice('大型迎撃機！ Fでコアへ糸 → 近距離Qで攻撃',3);}
+  if(!combatTaught&&checkpoint>0&&body.time>noticeUntil&&combat.target(body.position,forward,130)){combatTaught=true;if(!touchCapable)notice('大型迎撃機！ Fでコアへ糸 → 近距離Qで攻撃',3);}
   for(const event of combat.drainEvents()){
     combatView.event(event);
     if(event.type==='destroy'){notice(`大型機停止 ${combat.defeated} / 3`,1.2);tone(880,.25);}else if(event.type==='hurt'){notice(touchCapable?'被弾 — 予兆時のDODGEで回避':'被弾 — Xで回避',1.4);tone(110,.2);}else if(event.type==='hit')tone(640,.08);
@@ -247,9 +250,10 @@ function render(now){
   rope.visible=!!body.anchor;if(body.anchor){const attribute=rope.geometry.attributes.position;attribute.setXYZ(0,...hero.handWorld.toArray());attribute.setXYZ(1,...body.anchor.point.toArray());attribute.needsUpdate=true;}
   marker.visible=!!candidate&&!body.anchor;if(candidate){marker.position.copy(candidate.point);marker.rotation.y+=dt;}
 
-  const speed=body.velocity.length(),motion=body.velocity.clone().setY(0);
+  const speed=body.velocity.length();
+  // Character steering and camera steering share the same heading. Do not silently rotate the mobile
+  // camera toward velocity: that made the avatar and the view disagree after wall kicks and turns.
   cameraForward.copy(forward);
-  if(touchCapable&&body.time>manualLookUntil&&motion.lengthSq()>20){motion.normalize();cameraForward.lerp(motion,.48).normalize();}
   const recentRelease=body.time-body.assistedReleaseTime<.36,recentZip=body.time-body.zipTime<.28;
   const cameraDistance=8.1+Math.min(speed*.055,2.9)+(recentRelease?.7:0);
   chaseOffset.lerp(cameraForward.clone().multiplyScalar(-cameraDistance).add(new T.Vector3(0,3.2+pitch*7,0)),1-Math.exp(-dt*6.5));
@@ -265,7 +269,7 @@ function render(now){
   const landingLabel=body.grounded&&body.time<body.landingUntil?(body.landingType==='roll'?'LANDING ROLL':body.landingType==='skid'?'BRAKE SKID':body.landingType==='stick'?'STICK LANDING':null):null;
   $('#state').textContent=landingLabel??(recentZip?'WEB ZIP':body.time-body.dodgeTime<.42?'DODGE':body.anchor?'WEB SWING':body.wall?(body.velocity.y>1?'WALL RUN':'WALL CONTACT'):body.grounded?'ROOFTOP / STREET':body.velocity.y>2?'RISING':'FREE FALL');
   $('#shield').textContent='◆'.repeat(combat.health)+'◇'.repeat(3-combat.health);$('#security').textContent=`TITANS ${combat.defeated} / 3`;
-  const enemy=combat.target(body.position,forward);$('#combat-hint').textContent=!touchCapable&&enemy?`${Math.round(body.position.distanceTo(enemy.position))} m · F 糸${body.position.distanceTo(enemy.position)<28?' / Q 飛び蹴り':''}`:'';
+  const enemy=combat.target(body.position,forward);$('#combat-hint').textContent=!touchCapable&&enemy?`${Math.round(body.position.distanceTo(enemy.position))} m · F 糸${body.position.distanceTo(enemy.position)<48?' / Q 飛び蹴り':''}`:'';
   $('#progress').textContent=`${checkpoint} / ${rings.length}`;
   $('#next').textContent=checkpoint<rings.length?`ROUTE ${Math.round(body.position.distanceTo(ringPoints[checkpoint]))} m`:finished?`CLEAR ${elapsed.toFixed(1)} s · BEST ${best?.toFixed(1)} s`:'TITANS REMAIN';
   const goal=checkpoint<rings.length?ringPoints[checkpoint]:combat.drones.filter(drone=>drone.hp>0).sort((a,b)=>a.position.distanceTo(body.position)-b.position.distanceTo(body.position))[0]?.position;

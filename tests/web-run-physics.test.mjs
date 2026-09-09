@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Vector3} from 'three';
-import {SwingBody, makeCity, chooseAnchor, STEP, segmentHit} from '../web-run/physics.mjs';
+import {SwingBody, makeCity, chooseAnchor, kickFreshWallContact, STEP, segmentHit} from '../web-run/physics.mjs';
 const f=new Vector3(0,0,-1);
 test('anchor sits on an actual visible facade',()=>{
  const city=makeCity(),body=new SwingBody(city),target=chooseAnchor(body.position,f,city);
@@ -25,6 +25,25 @@ test('roof landing and wall contact do not tunnel at high speed',()=>{
  body.position.set(b.x,b.h+1.2,b.z);body.velocity.set(0,-62,0);body.step(STEP);assert.ok(body.grounded);assert.ok(body.position.y>=b.h+1.05);
  body.position.set(b.box.min.x-1,12,b.z);body.velocity.set(62,0,0);for(let i=0;i<6;i++)body.step(STEP);
  assert.ok(body.position.x<b.box.min.x);assert.ok(body.wall);body.jump(f);assert.ok(body.velocity.x<0);assert.ok(body.velocity.y>0);
+});
+
+test('fresh unanchored wall contact immediately becomes a wall kick',()=>{
+ const city=makeCity(),body=new SwingBody(city),b=city[0];
+ body.position.set(b.box.min.x-1,12,b.z);body.velocity.set(62,0,0);
+ const hadWall=!!body.wall;for(let i=0;i<6&&!body.wall;i++)body.step(STEP);
+ assert.ok(body.wall);assert.equal(kickFreshWallContact(body,hadWall,new Vector3(0,0,-1)),true);
+ assert.equal(body.wall,null);assert.ok(body.wallJumpTime>-1);assert.ok(body.velocity.y>0);
+ assert.equal(kickFreshWallContact(body,false,new Vector3(0,0,-1)),false,'One contact cannot retrigger after the kick clears wall state');
+});
+
+test('wall kick keeps an outward escape component while following the aimed heading',()=>{
+ const city=makeCity(),body=new SwingBody(city),b=city[0];
+ body.position.set(b.box.min.x-1,12,b.z);body.velocity.set(62,0,0);for(let i=0;i<6;i++)body.step(STEP);
+ assert.ok(body.wall);const jumpAt=body.time;body.jump(new Vector3(0,0,-1));
+ assert.ok(body.velocity.x<0,'Kick must clear the facade');
+ assert.ok(body.velocity.z<0,'Aim direction must shape the launch instead of a pure normal bounce');
+ assert.ok(body.velocity.y>0);assert.equal(body.wallJumpTime,jumpAt);
+ assert.ok(body.wallJumpFacing.x<0&&body.wallJumpFacing.z<0);
 });
 
 test('landing chooses roll, skid and stick from impact plus stop intent',()=>{
