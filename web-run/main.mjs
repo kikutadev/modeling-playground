@@ -305,7 +305,7 @@ function render(now){
   const dt=Math.min((now-last)/1000,.05);last=now;
   if(!paused){accumulator+=dt;while(accumulator>=STEP){step();finishCheck();accumulator-=STEP;if(paused)break;}}else accumulator=0;
   direction();candidate=chooseTraversalAnchor(movementIntentDirection());
-  hero.update(body,forward,paused?0:dt,combat);combatView.update(paused?0:dt,body);
+  hero.update(body,forward,paused?0:dt,combat,{webPreparing:!body.anchor&&(mobileWebHeld||mouseSwing||keys.has('Space')||!!pendingWallWeb),webAim:candidate?.point??null});combatView.update(paused?0:dt,body);
   rope.visible=!!body.anchor;if(body.anchor){const attribute=rope.geometry.attributes.position;attribute.setXYZ(0,...hero.handWorld.toArray());attribute.setXYZ(1,...body.anchor.point.toArray());attribute.needsUpdate=true;}
   marker.visible=!!candidate&&!body.anchor;if(candidate){marker.position.copy(candidate.point);marker.rotation.y+=dt;}
 
@@ -361,6 +361,12 @@ if(e2eParams.has('e2e')){
       body.release();body.position.copy(target.position).add(new T.Vector3(0,0,30));body.velocity.set(0,0,0);
       body.grounded=false;body.wall=null;yaw=0;pitch=.13;direction();snapCamera();
       return {targetId:target.id,position:body.position.toArray(),target:target.position.toArray()};
+    },
+    placeAirborne({vx=0,vy=0,vz=-30,webHand=0}={}){
+      body.release();body.position.set(0,80,80);body.velocity.set(vx,vy,vz);body.webHand=webHand;
+      body.grounded=false;body.wall=null;body.releaseTime=-10;body.assistedReleaseTime=-10;body.releaseAssist=null;body.zipTime=-10;
+      yaw=0;pitch=.13;direction();snapCamera();
+      return {position:body.position.toArray(),velocity:body.velocity.toArray(),webHand:body.webHand};
     }
   };
 }

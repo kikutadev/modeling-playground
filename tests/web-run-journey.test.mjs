@@ -5,6 +5,7 @@ import {SwingBody,makeCity,chooseAnchor,STEP} from '../web-run/physics.mjs';
 import {AirCombat} from '../web-run/combat.mjs';
 import {RING_POINTS,crossesRing} from '../web-run/course.mjs';
 import {performWebZip} from '../web-run/traversal-assist.mjs';
+import {computeAirborneMotion} from '../web-run/hero.mjs';
 
 test('the full course and three drones are reachable through production movement and combat',()=>{
  const city=makeCity(),body=new SwingBody(city),combat=new AirCombat(city);
@@ -31,4 +32,18 @@ test('a near miss or a teleport sample on one side does not count as a ring cros
  const r=RING_POINTS[0];assert.equal(crossesRing(r.clone().add(new Vector3(0,0,2)),r.clone().add(new Vector3(0,0,1)),0),false);
  assert.equal(crossesRing(r.clone().add(new Vector3(9,0,2)),r.clone().add(new Vector3(9,0,-2)),0),false);
  assert.equal(crossesRing(r.clone().add(new Vector3(0,0,2)),r.clone().add(new Vector3(0,0,-2)),0),true);
+});
+
+test('airborne motion weights follow climb, apex, fall and turn continuously',()=>{
+ const body={anchor:null,grounded:false,wall:null,webHand:0,velocity:new Vector3(0,16,-28)};
+ let motion=computeAirborneMotion(body,new Vector3(0,0,-1));
+ assert.ok(motion.climb>.95);assert.ok(motion.apex<.05);assert.equal(motion.kickLeg,1);
+ body.velocity.set(0,0,-30);motion=computeAirborneMotion(body,new Vector3(0,0,-1));
+ assert.ok(motion.apex>.95);assert.ok(motion.climb<.05);assert.ok(motion.fall<.05);
+ body.velocity.set(0,-22,-30);motion=computeAirborneMotion(body,new Vector3(0,0,-1));
+ assert.ok(motion.fall>.95);assert.ok(motion.dive>0);
+ body.velocity.set(24,2,-24);motion=computeAirborneMotion(body,new Vector3(0,0,-1));
+ assert.ok(motion.turn>.65);assert.ok(motion.turnSigned>0,'rightward travel should create a right bank');
+ body.grounded=true;motion=computeAirborneMotion(body,new Vector3(0,0,-1));
+ assert.equal(motion.airborne,false);assert.equal(motion.climb,0);assert.equal(motion.apex,0);assert.equal(motion.fall,0);
 });
