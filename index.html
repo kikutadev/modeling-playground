@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="GLBモデルを回転・拡大して確認できる、ローカルの3Dビューア。" />
+    <link rel="icon" href="data:," />
+    <title>Model Studio · GLB Viewer</title>
+    <script type="module" crossorigin src="./assets/main-prLc7o-N.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/three.module-C-BzRzIg.js">
+    <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
+    <link rel="modulepreload" crossorigin href="./assets/animation-CmruHTaQ.js">
+    <link rel="modulepreload" crossorigin href="./assets/GLTFLoader-CTkPS2av.js">
+    <link rel="modulepreload" crossorigin href="./assets/RoomEnvironment-SZRzZqc7.js">
+    <link rel="modulepreload" crossorigin href="./assets/asset-WZ2DFwKo.js">
+    <link rel="stylesheet" crossorigin href="./assets/main-jhTlAvM0.css">
+  </head>
+  <body>
+    <header>
+      <div class="brand"><span class="brand-mark" aria-hidden="true">M<span>S</span></span><div><h1>Model Studio</h1><p>GLB VIEWER</p></div></div>
+      <div class="file-actions"><button id="reload">再読み込み</button><label class="primary file-button">GLBを開く<input id="file" type="file" accept=".glb" aria-label="GLBファイルを選択" /></label></div>
+    </header>
+    <main>
+      <section id="viewport" aria-label="3Dモデルの表示領域">
+        <div class="model-caption"><span class="eyebrow">CURRENT MODEL</span><h2 id="model-name">GLB Viewer</h2><p id="status" role="status" aria-live="polite">モデルを読み込み中…</p></div>
+        <div id="error" role="alert" hidden></div>
+        <div id="drop-hint" hidden>GLBをドロップして開く</div>
+        <div class="viewport-footer"><span id="selection">ダブルクリックで部品にフォーカス</span><span class="axis-label">Y UP</span></div>
+      </section>
+      <aside aria-label="表示設定">
+        <section><label class="eyebrow" for="model-select">MODEL LIBRARY</label><select id="model-select" aria-label="モデルを選択"><option value="" disabled>ローカルファイル</option></select><h2>モデルを確認</h2><p class="intro">角度を変えて、かたちと配置を確認。</p>
+          <p class="intro"><a href="./sprite-lab.html">ドット絵・歩行素体の実験 →</a></p>
+          <p class="intro"><a href="./game.html">IRON YARD · ロボットTPS訓練場 →</a></p>
+          <div class="views" role="group" aria-label="視点"><button data-view="perspective" aria-pressed="true">斜め</button><button data-view="front" aria-pressed="false">正面</button><button data-view="side" aria-pressed="false">側面</button><button data-view="back" aria-pressed="false">背面</button><button data-view="top" aria-pressed="false">上面</button></div>
+          <button id="reset" class="wide">全体を表示 <kbd>F</kbd></button>
+        </section>
+        <section id="assembly-panel" hidden aria-label="機体アセンブリ">
+          <span class="eyebrow">BASTION / ASSEMBLY</span>
+          <h2>機体パーツを交換</h2>
+          <p class="intro">共通接続口を持つ11モジュール。左右は機体から見た向きです。</p>
+          <div id="assembly-fields"></div>
+          <button id="assembly-reset" class="wide">標準構成に戻す</button>
+          <button id="assembly-export" class="wide">構成をGLBで保存</button>
+          <p id="assembly-status" class="intro" role="status"></p>
+          <p class="intro">変更は保存ボタンで書き出せます。再読み込みでは元の構成に戻ります。</p>
+        </section>
+        <section id="ik-panel" hidden aria-label="IKポーズ編集">
+          <span class="eyebrow">POSE CONTROLS</span>
+          <label class="check"><input type="checkbox" id="ik-visible" checked /> IKハンドルを表示</label>
+          <label class="range-label" for="ik-mode">制御方式</label><select id="ik-mode" aria-label="制御方式"><option value="IK">IK · ターゲット操作</option><option value="FK">FK · 関節の回転</option></select>
+          <div id="ik-target-fields"><label class="range-label" for="ik-target">操作対象</label><select id="ik-target" aria-label="操作対象"></select>
+            <label class="range-label" for="ik-x">X <output id="ik-x-value"></output></label><input type="range" id="ik-x" aria-label="ターゲット X" min="-2" max="2" step="0.01" />
+            <label class="range-label" for="ik-y">Y <output id="ik-y-value"></output></label><input type="range" id="ik-y" aria-label="ターゲット Y" min="0" max="2.5" step="0.01" />
+            <label class="range-label" for="ik-z">Z <output id="ik-z-value"></output></label><input type="range" id="ik-z" aria-label="ターゲット Z" min="-2" max="2" step="0.01" />
+            <button id="ik-crouch" class="wide">しゃがむ</button>
+          </div>
+          <div id="fk-fields" hidden><label class="range-label" for="fk-bone">関節</label><select id="fk-bone" aria-label="FK関節"></select>
+            <label class="range-label" for="fk-x">X <output id="fk-x-value">0°</output></label><input type="range" id="fk-x" aria-label="関節 X" min="-90" max="90" step="1" value="0" />
+            <label class="range-label" for="fk-y">Y <output id="fk-y-value">0°</output></label><input type="range" id="fk-y" aria-label="関節 Y" min="-90" max="90" step="1" value="0" />
+            <label class="range-label" for="fk-z">Z <output id="fk-z-value">0°</output></label><input type="range" id="fk-z" aria-label="関節 Z" min="-90" max="90" step="1" value="0" />
+          </div>
+          <button id="ik-reset" class="wide">ポーズをリセット</button>
+          <p id="ik-status" role="status" class="intro"></p>
+          <p class="intro">再生中は一時停止すると目印を表示。丸は手足、青は膝・肘の曲がる方向です。編集は一時的で、再生・シークすると解除されます。</p>
+        </section>
+        <section id="animation-panel" hidden aria-label="アニメーション">
+          <label class="eyebrow" for="clip-select">ANIMATION</label>
+          <select id="clip-select" aria-label="アニメーションを選択"></select>
+          <div class="playback-row"><button id="play-pause">一時停止</button><select id="playback-speed" aria-label="再生速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div>
+          <label class="range-label" for="timeline">再生位置 <output id="animation-time">0.00 / 0.00 s</output></label>
+          <input id="timeline" type="range" min="0" max="1" step="0.01" value="0" aria-label="再生位置" />
+          <label class="toggle"><span>骨格を表示</span><input type="checkbox" id="skeleton" /></label>
+        </section>
+        <section class="settings"><span class="eyebrow">DISPLAY</span>
+          <label class="toggle"><span>ワイヤーフレーム</span><input type="checkbox" id="wireframe" /></label>
+          <label class="toggle"><span>グリッド</span><input type="checkbox" id="grid" /></label>
+          <label class="toggle"><span>自動回転</span><input type="checkbox" id="rotate" /></label>
+          <label class="range-label" for="exposure">明るさ <output id="exposure-value">1.0</output></label><input id="exposure" type="range" min="0.3" max="2" step="0.1" value="1" />
+        </section>
+        <section><span class="eyebrow">MODEL INFO</span><dl><div><dt>サイズ</dt><dd id="file-size">—</dd></div><div><dt>メッシュ</dt><dd id="meshes">—</dd></div><div><dt>三角形</dt><dd id="triangles">—</dd></div><div class="dimensions"><dt>幅 × 高さ × 奥行き</dt><dd id="dimensions">—</dd></div></dl></section>
+        <section class="help"><span class="eyebrow">CONTROLS</span><p>ドラッグで回転<br>ホイール・ピンチで拡大縮小<br>右ドラッグ・2本指で移動</p><p>GLBのドラッグ＆ドロップにも対応。<br>選んだファイルはブラウザ内で表示します。</p></section>
+      </aside>
+    </main>
+  </body>
+</html>
