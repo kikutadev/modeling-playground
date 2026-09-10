@@ -14,7 +14,7 @@ const timeInput=document.querySelector('#time'),timeOut=document.querySelector('
 const body={position:new T.Vector3(),velocity:new T.Vector3(),wall:null,grounded:false,anchor:null,time:0,webHand:0,wallJumpTime:-10,wallJumpFacing:new T.Vector3(0,0,-1),releaseTime:0,assistedReleaseTime:0,zipTime:-10,dodgeTime:-10,landTime:-10,landingUntil:-10,landingStart:-10,landingType:'none'};
 const forward=new T.Vector3(0,0,-1),dt=1/60;
 function velocityAt(t){return new T.Vector3(0,16-9.8*t,-30);}
-function phase(m){return m.climb>.55?'CLIMB / KICK-UP':m.apex>.55?'APEX TUCK':m.fall>.55?'FALL / OPEN':'TRANSITION';}
+function phase(m){return m.climb>.55?'CLIMB / KICK-UP':m.apex>.55?'APEX / SCISSOR':m.fall>.55?'FALL / OPEN':'TRANSITION';}
 function setCamera(){if(view==='side')camera.position.set(6.2,.3,0);else if(view==='front')camera.position.set(0,.3,-6.2);else camera.position.set(0,.3,6.2);camera.lookAt(0,.05,0);}
 function resetAndSimulate(target){
   scene.remove(hero.root);const replacement=createHero();hero.root=replacement.root;hero.handWorld=replacement.handWorld;hero.shotHandWorld=replacement.shotHandWorld;hero.update=replacement.update;scene.add(hero.root);

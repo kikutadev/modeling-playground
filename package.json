@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "test": "node --test tests/*.test.mjs",
     "test:e2e": "playwright test",
+    "test:web-run": "playwright test --config playwright.web-run.config.mjs tests/e2e/web-run-*.spec.mjs",
     "test:pages": "playwright test --config playwright.pages.config.mjs"
   },
   "engines": {

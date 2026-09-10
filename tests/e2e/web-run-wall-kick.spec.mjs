@@ -20,18 +20,17 @@ test('wall WEB input kicks first, then attaches after clearing the facade',async
   // Holding WEB on the wall starts a kick; the web appears only after a short clear-air beat.
   await page.keyboard.down('Space');
   await page.waitForFunction(()=>globalThis.__threadlineReadState().wallJumpTime>=0,{timeout:20_000});
-  const kicked=await read(page);
-  expect(kicked.attached).toBe(false);
-  expect(kicked.pendingWallWeb).toBe(true);
-  const kickTime=kicked.wallJumpTime;
+  const kickTime=(await read(page)).wallJumpTime;
 
+  // Polling from Node can miss the deliberately short clear-air beat on a slow headless WebGL frame.
+  // Compare simulation timestamps instead: the attachment itself must occur at least 100 ms after kick-off.
   await page.waitForFunction(t=>{
-    const s=globalThis.__threadlineReadState();return s.attached&&s.time>t+.10;
+    const s=globalThis.__threadlineReadState();return s.attached&&s.attachTime>=t+.10;
   },kickTime,{timeout:25_000});
   const attached=await read(page);
   expect(attached.wall).toBe(false);
   expect(attached.attached).toBe(true);
-  expect(attached.time-kickTime).toBeGreaterThan(.10);
+  expect(attached.attachTime-kickTime).toBeGreaterThanOrEqual(.10);
   await page.screenshot({path:testInfo.outputPath('wall-kick-then-web.png'),fullPage:true});
   await page.keyboard.up('Space');
   expect(errors).toEqual([]);

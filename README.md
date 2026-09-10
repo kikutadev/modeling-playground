@@ -1,8 +1,21 @@
 # Modeling Playground
 
+## THREADLINE — Webスイングアクション
+
+[ゲームを開く](http://127.0.0.1:5188/web-run.html) · `npm run dev`
+
+`web-run/` に新規実装した、PCのキーボード／マウスで遊ぶローポリ3Dアクションゲーム。Space／左クリックを押して実在するビルに糸を掛け、離すとその瞬間の慣性で飛びます。WASDで移動・空中操作、左右矢印／右ドラッグで旋回、Eで糸を巻き上げ、Shiftで急降下、Rで再挑戦。G／画面右下のボタンでは、長押し不要の切替操作もできます。壁に触れてWで駆け上がり、Spaceで壁ジャンプ。ビル内のスカイギャラリーを含む6個のリングを順に通り、3機のドローンを止めるタイムアタックです。Fで糸を撃って拘束、40 m以内でQを押すと飛び蹴り、Xで横回避。被弾3回で再挑戦になります。
+
+物理は `web-run/physics.mjs`、表示・操作は `web-run/main.mjs`、キャラクターは `web-run/hero.mjs`。旧 `humanoid-study` とは独立しています。`node --test tests/web-run-*.test.mjs` で慣性、糸、接続点、衝突、空中戦、全コースの到達可能性を検証します。`pnpm test:web-run` は専用のheadless Chromium構成で、長押し・巻き上げ・離脱・射撃・飛び蹴り・回避・壁走り・壁ジャンプ・再挑戦と全コースのクリアを検証します。短いRelease/Zipのピークはブラウザ内のシミュレーション時刻で観測し、headless WebGLの実時間速度に依存しないようにしています。失敗時の画面は `test-results/` に保存されます。
+
+移動・空中戦・建物内の移動とクリア／失敗ループを実装しています。通し検証はゲーム状態の読み取りと通常のキーボード入力で行い、キャラクター位置や進行状態を書き換えません。キャラクターの腕・脚は固定長の関節計算で動かし、糸を掛ける手を左右交互に切り替えます。旧モデル研究とその[リグ／アクション設計資料](docs/humanoid-rigging/web-shooter-action-target.md)は別の入口として残しています。
+
+
 生成コードで作る3Dモデル、共通のThree.js GLB Viewer、React Three Fiber製のTPS試作。
 
 キャラクター制作の前に：[リテイク再発防止ガイド](docs/modeling-retake-guide.md)。正面先行による厚み不足を避け、背中の量感・目の向き・衣服の接続を初期段階から確認するための手順です。
+
+人型キャラクターの変形トポロジ、Armature、IK/FK、Weight Paint、Action、GLB exportを体系的に扱う資料：[Humanoid Rigging & Action Study](docs/humanoid-rigging/README.md)。外部リソース集と、このリポジトリへ適用するplaybookを分けています。
 
 **[公開Playground](https://mizchi.github.io/modeling-playground/)** — インストール不要で全モデルを表示・操作できます。
 

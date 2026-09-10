@@ -6,7 +6,7 @@ export function airborneMotionWeights(velocity,forward,releaseWeight=0){
   const vy=velocity.y;
   const climb=T.MathUtils.smoothstep(vy,3,15)*(1-releaseWeight*.45);
   const apex=(1-T.MathUtils.smoothstep(Math.abs(vy),1.5,5.5))*(1-releaseWeight*.7);
-  const fall=T.MathUtils.smoothstep(-vy,3,18)*(1-releaseWeight*.35);
+  const fall=T.MathUtils.smoothstep(-vy,.2,7.5)*(1-releaseWeight*.35);
   const planar=velocity.clone().setY(0);
   const facing=forward.clone().setY(0);
   let bank=0;
@@ -39,7 +39,7 @@ export function computeAirborneMotion(body, forward){
   const vy=body.velocity.y;
   const climb=T.MathUtils.smoothstep(vy,3,15);
   const apex=1-T.MathUtils.smoothstep(Math.abs(vy),1.2,5.2);
-  const fall=T.MathUtils.smoothstep(-vy,3,17);
+  const fall=T.MathUtils.smoothstep(-vy,.2,7.5);
   const dive=fall*T.MathUtils.smoothstep(-vy,12,30);
   const horizontal=body.velocity.clone().setY(0);
   const right=new T.Vector3(-forward.z,0,forward.x).normalize();
@@ -51,10 +51,20 @@ export function computeAirborneMotion(body, forward){
 export function computeReleaseKickUp(body){
   const age=body.time-(body.releaseTime??-10);
   const ascent=T.MathUtils.smoothstep(body.velocity.y,4,13);
-  if(age<.12||age>.92||ascent<=.01)return {active:false,phase:0,weight:0};
-  const phase=T.MathUtils.clamp((age-.12)/.80,0,1);
-  const envelope=Math.sin(Math.PI*phase);
-  return {active:true,phase,weight:envelope*(.35+.65*ascent)};
+  // The kick must read immediately after release. A 100 ms dead zone left the outgoing swing tuck
+  // on screen long enough to look like a seated float before the authored action began.
+  if(age<.035||age>.86||ascent<=.01)return {active:false,phase:0,weight:0,sweep:0};
+  const phase=T.MathUtils.clamp((age-.035)/.825,0,1);
+  // Keep the authored kick fully present through its recovery. A sine envelope faded too early and
+  // made the foot appear to snap back into another knee drive instead of sweeping behind the body.
+  const enter=T.MathUtils.smoothstep(phase,0,.07);
+  const exit=1-T.MathUtils.smoothstep(phase,.88,1);
+  const weight=enter*exit*(.42+.58*ascent);
+  return {active:true,phase,weight,sweep:T.MathUtils.smoothstep(phase,.38,.74)};
+}
+
+export function nextWebHandIndex(body){
+  return Number.isInteger(body.attaches)?body.attaches%2:1-(body.webHand??0);
 }
 
 export function createHero(){
@@ -87,12 +97,21 @@ export function createHero(){
   const handWorld=new T.Vector3(),shotHandWorld=new T.Vector3();let yaw=0;
   const smoothedArms=[point(-.51,.12,-.1),point(.51,.15,-.1)];
   const smoothedFeet=[point(-.19,-1.10,0),point(.19,-1.10,0)];
-  let poseInitialized=false;
+  let poseInitialized=false,wasWebPreparing=false,webPrepareStartedAt=-10;
   return {root,handWorld,shotHandWorld,update(body,forward,dt,combat=null,motion=null){
     root.position.copy(body.position);
     const velocity=body.velocity,speed=velocity.length(),wall=body.wall&&!body.grounded;
     const air=computeAirborneMotion(body,forward);
     const webPreparing=Boolean(motion?.webPreparing&&!body.anchor&&!body.grounded);
+    // While free-flying, body.webHand is the hand from the previous attachment. The upcoming web
+    // alternates to attaches % 2, so anticipation must lead with that next hand rather than snapping
+    // from the just-released hand to the opposite hand at attachment time.
+    const nextWebHand=nextWebHandIndex(body);
+    if(webPreparing&&!wasWebPreparing)webPrepareStartedAt=body.time;
+    if(!webPreparing)webPrepareStartedAt=-10;
+    const webPrepareAge=webPreparing?Math.max(0,body.time-webPrepareStartedAt):0;
+    const webHeadWeight=webPreparing?T.MathUtils.smoothstep(webPrepareAge,0,.08):0;
+    const webArmWeight=webPreparing?T.MathUtils.smoothstep(webPrepareAge,.07,.22):0;
     const wallJumpAge=body.time-(body.wallJumpTime??-10);
     const wallJumpFacingActive=wallJumpAge>=0&&wallJumpAge<.30;
     const facing=wall?body.wall.clone().negate():wallJumpFacingActive?body.wallJumpFacing:combat?.kickTarget!==null&&combat?.aimPoint?combat.aimPoint.clone().sub(body.position).setY(0).normalize():forward;
@@ -133,12 +152,20 @@ export function createHero(){
     const dodgeAge=body.time-body.dodgeTime;
     const dodgeSpin=dodgeAge<.42?Math.PI*2*T.MathUtils.smoothstep(dodgeAge,0,.42):0;
     const airBank=freeFlight?-.50*air.turnSigned:0;
-    const apexRoll=freeFlight?(body.webHand?1:-1)*.28*apex:0;
-    rig.rotation.z=dodgeSpin+airBank+apexRoll;
-    rig.rotation.y=freeFlight?(body.webHand?1:-1)*(.28*apex+.10*kickUp.weight):0;
+    const gestureSide=body.webHand?1:-1;
+    const apexRoll=freeFlight?gestureSide*.28*apex:0;
+    const fallRoll=freeFlight?gestureSide*.10*fall:0;
+    rig.rotation.z=dodgeSpin+airBank+apexRoll+fallRoll;
+    // Rear-view readability comes from counter-rotation, not random limb noise: twist strongly during
+    // the one-shot kick, unwind through the coast, then retain a smaller asymmetric apex gesture.
+    const kickTwist=freeFlight?gestureSide*.25*kickUp.weight*(1-.60*kickUp.sweep):0;
+    const flightTwist=freeFlight?gestureSide*(.46*apex+.24*fall):0;
+    rig.rotation.y=freeFlight?kickTwist+flightTwist:0;
     // Keep yaw on root, but put the authored airborne lean on rig so it is not cancelled by pose blending.
-    const coastUp=freeFlight?T.MathUtils.smoothstep(velocity.y,.5,8):0;
-    const flightLean=freeFlight?(-.32*coastUp-.16*kickUp.weight+.18*apex+(1.02+.16*dive)*fall):0;
+    const coastUp=freeFlight?T.MathUtils.smoothstep(velocity.y,-.5,8):0;
+    // Side-view grammar stays on one ballistic arc. Negative X rotation leans the torso toward
+    // travel (-Z); apex and descent must therefore continue negative instead of standing back up.
+    const flightLean=freeFlight?(-.55*coastUp-.18*kickUp.weight-.58*apex-(.86+.14*dive)*fall):0;
     rig.rotation.x=landingType==='roll'?-Math.PI*2*landingEase:landingType==='skid'?.10*Math.sin(Math.PI*landingPhase):flightLean;
     rig.position.y=-landed*.18+(landingType==='roll'?.16*Math.sin(Math.PI*landingPhase):landingType==='skid'?-.07:landingType==='stick'?-.12*(1-landingEase):0);
     root.updateMatrixWorld(true);
@@ -155,30 +182,38 @@ export function createHero(){
     else if(wallJump>.02){targets[0].set(-.58,.34,.16);targets[1].set(.58,.46,.04);}
     else if(zip>.02){targets[0].set(-.30,.42,-.56);targets[1].set(.30,.42,-.56);}
     else if(!body.grounded){
-      // Free flight is trajectory-driven rather than a single frozen airborne pose.
-      targets[0].set(-.62,.28,.10);targets[1].set(.62,.18,-.20);
+      // Free-flight neutral is already an asymmetric glide, not a compact mannequin pose. The arm
+      // on the released-web side trails while the opposite arm reaches into travel.
+      const trailArm=body.webHand,reachArm=1-trailArm,trailSide=trailArm===0?-1:1,reachSide=reachArm===0?-1:1;
+      targets[trailArm].set(trailSide*.72,.30,.52);
+      targets[reachArm].set(reachSide*.72,.26,-.58);
       if(climb>.01&&!kickUp.active){
         const kickSide=air.kickLeg===0?-1:1;
         targets[0].lerp(point(-.72,.58,.14-kickSide*.04),climb*.82);
         targets[1].lerp(point(.70,.42,-.42-kickSide*.04),climb*.82);
       }
       if(kickUp.weight>.01){
-        const support=body.webHand,free=1-support,ss=support===0?-1:1,fs=free===0?-1:1;
-        targets[support].lerp(point(ss*.84,.55,.50),kickUp.weight*.94);
-        targets[free].lerp(point(fs*.84,.25,-.46),kickUp.weight*.92);
+        const support=body.webHand,free=1-support,ss=support===0?-1:1,fs=free===0?-1:1,p=kickUp.phase;
+        // Arms counter-balance the single leg action, then open into the coast instead of cycling.
+        const supportEarly=point(ss*.84,.58,.48),supportCoast=point(ss*.72,.30,.52);
+        const freeEarly=point(fs*.82,.24,-.50),freeCoast=point(fs*.72,.26,-.58);
+        targets[support].lerp(supportEarly.clone().lerp(supportCoast,T.MathUtils.smoothstep(p,.42,.82)),kickUp.weight*.94);
+        targets[free].lerp(freeEarly.clone().lerp(freeCoast,T.MathUtils.smoothstep(p,.42,.82)),kickUp.weight*.92);
       }
       if(apex>.01){
         // At the apex, keep one side open and let the other side fold in. This reads as a
         // weightless twist instead of both shoulders collapsing into a seated/tucked pose.
         const open=body.webHand,fold=1-open;
         const os=open===0?-1:1,fs=fold===0?-1:1;
-        targets[open].lerp(point(os*.76,.48,.46),apex*.84);
-        targets[fold].lerp(point(fs*.54,.10,-.56),apex*.82);
+        targets[open].lerp(point(os*.78,.46,.62),apex*.88);
+        targets[fold].lerp(point(fs*.62,.16,-.68),apex*.86);
       }
       if(fall>.01){
-        const spread=1-dive*.68;
-        targets[0].lerp(point(-.74*spread,.10,.40+dive*.20),fall*.90);
-        targets[1].lerp(point(.74*spread,.08,.40+dive*.20),fall*.90);
+        // Descent keeps a fore/aft arm split: the next web hand reaches into travel while the other
+        // arm trails. This prevents the generic symmetric skydiver/mannequin silhouette.
+        const reach=nextWebHand,trail=1-reach,rs=reach===0?-1:1,ts=trail===0?-1:1;
+        targets[reach].lerp(point(rs*.86,.30,-.60+dive*.08),fall*.96);
+        targets[trail].lerp(point(ts*.60,.02,.68+dive*.12),fall*.96);
       }
       if(freeFlight&&air.turn>.04){
         const bank=air.turnSigned;
@@ -192,8 +227,9 @@ export function createHero(){
         targets[free].lerp(point(free===0?-.55:.55,.22+release*.08,-.24-release*.10),release*.76);
       }
       if(webPreparing&&motion?.webAim){
-        const aim=rig.worldToLocal(motion.webAim.clone()).sub(shoulders[body.webHand]).normalize();
-        targets[body.webHand].lerp(shoulders[body.webHand].clone().addScaledVector(aim,.755),.72);
+        const aim=rig.worldToLocal(motion.webAim.clone()).sub(shoulders[nextWebHand]).normalize();
+        // Let gaze/torso intent lead the hand. The reach ramps in after a short preparation beat.
+        targets[nextWebHand].lerp(shoulders[nextWebHand].clone().addScaledVector(aim,.755),.78*webArmWeight);
       }
     }
     if(combat&&combat.time-combat.shotAt<.3&&combat.aimPoint){const shooting=swinging?1-body.webHand:1,direction=rig.worldToLocal(combat.aimPoint.clone()).sub(shoulders[shooting]).normalize();targets[shooting].copy(shoulders[shooting]).addScaledVector(direction,.755);}
@@ -219,25 +255,34 @@ export function createHero(){
         if(kickUp.active){
           const p=kickUp.phase,w=kickUp.weight;
           if(i===kickLeg){
-            const chamber=point(side*.30,-.30,-.38),snap=point(side*.38,-.06,-.88),recover=point(side*.28,-.70,.48);
-            const target=p<.52?chamber.clone().lerp(snap,T.MathUtils.smoothstep(p,.10,.52)):snap.clone().lerp(recover,T.MathUtils.smoothstep(p,.52,.94));
-            foot.lerp(target,w*.96);
+            // One continuous foot path: chamber -> snap -> sweep behind -> long coast. There is no
+            // second knee-forward target anywhere after the snap, so it cannot read as air-running.
+            const neutral=point(side*.26,-.76,.62),chamber=point(side*.30,-.24,-.34);
+            const snap=point(side*.34,.20,-.88),sweep=point(side*.27,-.96,.76),coast=point(side*.25,-.88,.80);
+            let target;
+            if(p<.20)target=neutral.clone().lerp(chamber,T.MathUtils.smoothstep(p,0,.20));
+            else if(p<.42)target=chamber.clone().lerp(snap,T.MathUtils.smoothstep(p,.20,.42));
+            else if(p<.76)target=snap.clone().lerp(sweep,T.MathUtils.smoothstep(p,.42,.76));
+            else target=sweep.clone().lerp(coast,T.MathUtils.smoothstep(p,.76,1));
+            foot.lerp(target,w*.98);
           }else{
-            const trailBack=point(side*.25,-.92,.54),trailRecover=point(side*.24,-.76,.38);
-            const trail=trailBack.clone().lerp(trailRecover,T.MathUtils.smoothstep(p,.46,.94));
-            foot.lerp(trail,w*.88);
+            const supportStart=point(side*.20,-1.12,.72),supportLong=point(side*.21,-1.08,.80),supportCoast=point(side*.24,-.90,.72);
+            const target=p<.52?supportStart.clone().lerp(supportLong,T.MathUtils.smoothstep(p,.16,.52)):supportLong.clone().lerp(supportCoast,T.MathUtils.smoothstep(p,.52,.92));
+            foot.lerp(target,w*.92);
           }
         }
         if(apex>.01){
-          // One knee floats inward while the opposite leg stays long and trails behind.
-          // Keeping the long leg low prevents the apex from reading as a seated crouch.
-          const apexFoot=i===kickLeg?point(side*.40,-.28,-.62):point(side*.24,-.98,.72);
-          foot.lerp(apexFoot,apex*.84*(1-kickUp.weight*.55));
+          // The forward leg stays below the pelvis while the opposite leg remains long and rearward.
+          // This preserves the scissor silhouette without creating a seated or kneeling apex.
+          const apexFoot=i===kickLeg?point(side*.38,-.80,-.50):point(side*.23,-1.01,.78);
+          foot.lerp(apexFoot,apex*.84*(1-kickUp.weight*.62));
         }
         if(fall>.01){
-          // Falling body lengthens into the direction of travel instead of standing upright in air.
-          const fallFoot=point(side*(.31-.10*dive),-.86,.52-.12*dive);
-          foot.lerp(fallFoot,fall*.90);
+          // Keep both legs trailing, but make one long and one softly bent. The larger vertical and
+          // fore/aft stagger stays readable from the rear and does not collapse back into a squat.
+          const longLeg=i===nextWebHand;
+          const fallFoot=longLeg?point(side*(.40-.08*dive),-1.12,.80-.08*dive):point(side*(.18-.04*dive),-.72,.46-.04*dive);
+          foot.lerp(fallFoot,fall*.99);
         }
         if(air.turn>.04){foot.x+=side*air.turn*.07;foot.y+=(i===0?-1:1)*air.turnSigned*.06;}
       }
@@ -247,7 +292,9 @@ export function createHero(){
         else foot.set(side*.28,-.78,-.18);
       }
       if(kick&&i===1)foot.set(.17,-.2,-.85);
-      const legFollow=(body.grounded||wall)?22:swinging?13:release>.02?5.6:freeFlight?12:air.airborne?9:10;
+      // The release kick needs a fast leg response; otherwise smoothing preserves the prior swing
+      // tuck for several frames and visually delays the one-shot action.
+      const legFollow=(body.grounded||wall)?22:swinging?13:kickUp.active?24:release>.02?9:freeFlight?12:air.airborne?9:10;
       const legAlpha=poseInitialized?1-Math.exp(-dt*legFollow):1;
       smoothedFeet[i].lerp(foot,legAlpha);
       const pole=point(side*.26,-.45,-.85);
@@ -256,7 +303,13 @@ export function createHero(){
       feet[i].rotation.x=wall?-.8:kick&&i===1?-1.1:0;
     }
     poseInitialized=true;
-    head.rotation.y=wall?0:(airborne?-airMotion.bank*.18:Math.sin(body.time*.7)*.025);
+    let webLookYaw=0;
+    if(webPreparing&&motion?.webAim&&webHeadWeight>.001){
+      const localAim=rig.worldToLocal(motion.webAim.clone());
+      webLookYaw=T.MathUtils.clamp(Math.atan2(-localAim.x,-localAim.z),-.65,.65)*.44*webHeadWeight;
+    }
+    head.rotation.y=wall?0:(airborne?-airMotion.bank*.18+webLookYaw:Math.sin(body.time*.7)*.025);
+    wasWebPreparing=webPreparing;
     root.updateMatrixWorld(true);hands[body.webHand].getWorldPosition(handWorld);hands[swinging?1-body.webHand:1].getWorldPosition(shotHandWorld);
   }};
 }
