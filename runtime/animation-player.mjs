@@ -27,7 +27,8 @@ export class AnimationPlayer {
       this.action.clampWhenFinished = once;
     }
     this.playing = Boolean(this.action);
-    this.mixer.update(0);
+    this.mixer.update(1e-8);
+    if (this.action) this.action.time = 0;
   }
   update(delta) { if (this.playing) this.mixer.update(delta * this.speed); }
   play() {
@@ -40,8 +41,10 @@ export class AnimationPlayer {
     if (!this.action) return;
     this.playing = false;
     this.action.paused = false;
-    this.action.time = Math.max(0, Math.min(time, this.duration - 1e-7));
-    this.mixer.update(0);
+    const targetTime = Math.max(0, Math.min(time, this.duration - 1e-7));
+    this.action.time = targetTime;
+    this.mixer.update(1e-8);
+    this.action.time = targetTime;
   }
   dispose() {
     this.mixer.removeEventListener('finished', this.onFinished);

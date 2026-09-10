@@ -11,6 +11,7 @@ const metadata = {
   traveler: { label: 'Milo · 旅人', direction: [.7, .25, 2.2] },
   'traveler-walk': { label: 'Milo · 歩行', direction: [.9, .28, 2.2] },
   'traveler-ik': { label: 'Milo · IKポーズ', direction: [.9, .28, 2.2] },
+  'humanoid-deform-study': { label: 'Humanoid · Web Shooter Action Study', direction: [.85, .30, 2.25] },
 };
 
 /** @type {Array<{id: string, label: string, filename: string, url: string, definitionUrl?: string, direction: number[]}>} */

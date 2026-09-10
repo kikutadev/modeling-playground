@@ -80,3 +80,38 @@ test('moving the web anchor preserves body position and tangential momentum', as
   assert.ok(after.velocity.distanceTo(before.velocity) < 0.35, 'reattach discarded too much tangential momentum');
   assert.ok(after.ropeLength >= 2.35 && after.ropeLength <= 3.75, 'rope length escaped supported range');
 });
+
+
+test('procedural swing pose stays bounded across repeated cycles', async () => {
+  const asset = await loadStudyAsset();
+  const motionRoot = new Group();
+  motionRoot.add(asset.scene);
+  const controller = new HumanoidSwingController({
+    root: asset.scene,
+    motionRoot,
+    mixer: new AnimationMixer(asset.scene),
+    clips: asset.animations,
+  });
+  controller.activate();
+
+  let maxBlend = 0;
+  let maxLean = 0;
+  let maxHandRadius = 0;
+  let maxFootRadius = 0;
+  for (let frame = 0; frame < 1800; frame += 1) {
+    const snapshot = controller.step(1 / 60);
+    maxBlend = Math.max(maxBlend, snapshot.tuckBlend);
+    maxLean = Math.max(maxLean, Math.abs(snapshot.bodyLean));
+    const hips = asset.scene.getObjectByName('Hips').getWorldPosition(new Vector3());
+    const freeHand = asset.scene.getObjectByName('RightHand').getWorldPosition(new Vector3());
+    const leftFoot = asset.scene.getObjectByName('LeftFoot').getWorldPosition(new Vector3());
+    const rightFoot = asset.scene.getObjectByName('RightFoot').getWorldPosition(new Vector3());
+    maxHandRadius = Math.max(maxHandRadius, hips.distanceTo(freeHand));
+    maxFootRadius = Math.max(maxFootRadius, hips.distanceTo(leftFoot), hips.distanceTo(rightFoot));
+  }
+
+  assert.ok(maxBlend > 0.80 && maxBlend <= 0.90, `unexpected Tuck range: ${maxBlend}`);
+  assert.ok(maxLean <= 0.37, `body lean accumulated or exceeded its visual limit: ${maxLean}`);
+  assert.ok(maxHandRadius < 1.35, `free arm drifted away from the body: ${maxHandRadius}`);
+  assert.ok(maxFootRadius < 1.45, `leg pose accumulated across cycles: ${maxFootRadius}`);
+});
