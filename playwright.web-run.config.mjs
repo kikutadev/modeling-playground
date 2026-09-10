@@ -12,7 +12,7 @@ export default defineConfig({
     screenshot:'only-on-failure',
   },
   webServer:{
-    command:'./node_modules/.bin/vite --host 127.0.0.1 --port 5190 --strictPort',
+    command:'node ./node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5190 --strictPort',
     url:'http://127.0.0.1:5190',
     reuseExistingServer:false,
   },
