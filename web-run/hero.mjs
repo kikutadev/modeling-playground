@@ -48,6 +48,15 @@ export function computeAirborneMotion(body, forward){
   return {airborne:true,climb,apex,fall,dive,turn,turnSigned,kickLeg:1-(body.webHand??0)};
 }
 
+export function computeReleaseKickUp(body){
+  const age=body.time-(body.releaseTime??-10);
+  const ascent=T.MathUtils.smoothstep(body.velocity.y,4,13);
+  if(age<.12||age>.92||ascent<=.01)return {active:false,phase:0,weight:0};
+  const phase=T.MathUtils.clamp((age-.12)/.80,0,1);
+  const envelope=Math.sin(Math.PI*phase);
+  return {active:true,phase,weight:envelope*(.35+.65*ascent)};
+}
+
 export function createHero(){
   const root=new T.Group(),rig=new T.Group();root.add(rig);
   const red=new T.MeshStandardMaterial({color:0xd74731,roughness:.52});
@@ -98,6 +107,7 @@ export function createHero(){
     const airborne=!body.grounded&&!wall&&!swinging;
     const airMotion=airborne?airborneMotionWeights(velocity,forward,release):{climb:0,apex:0,fall:0,bank:0};
     const freeFlight=air.airborne&&wallJump<=.02&&!kick&&zip<=.02;
+    const kickUp=freeFlight?computeReleaseKickUp(body):{active:false,phase:0,weight:0};
     const climb=freeFlight?airMotion.climb:0,apex=freeFlight?airMotion.apex:0,fall=freeFlight?airMotion.fall:0,dive=freeFlight?air.dive:0;
     const landed=Math.max(0,1-(body.time-body.landTime)/.3);
     const landingActive=body.grounded&&body.time<(body.landingUntil??-10)&&body.landingType!=='run';
@@ -112,9 +122,9 @@ export function createHero(){
     const descending=swinging?T.MathUtils.clamp((-velocity.y-1)/18,0,1):0;
     const stretch=descending*(1-bottomness)*Math.min(1,speed/34);
     const swingTuck=Math.max(bottomness*.45,rising*.92);
-    const tucked=wall?0:body.grounded?landed*.8:swinging?swingTuck:kick?.35:Math.max(release*.85+zip*.25+.15,wallJump*.78,airMotion.apex*.82,airMotion.climb*.28);
+    const tucked=wall?0:body.grounded?landed*.8:swinging?swingTuck:kick?.35:Math.max(release*.72+zip*.25+.10,wallJump*.78,airMotion.apex*.58);
     const landingPitch=landingType==='skid'?T.MathUtils.lerp(.34,-.04,landingEase):landingType==='stick'?T.MathUtils.lerp(-.22,-.08,landingEase):-.08;
-    const airbornePitch=freeFlight?(-.31*climb+.02*apex+(.22+.28*dive)*fall+Math.min(.10,speed*.0022)):air.airborne?Math.min(.38,speed*.010):Math.min(.9,speed*.014);
+    const airbornePitch=freeFlight?0:air.airborne?Math.min(.38,speed*.010):Math.min(.9,speed*.014);
     const pose=new T.Quaternion().setFromEuler(new T.Euler(wall?0:body.grounded?landingPitch:swinging?-.2:airbornePitch,yaw,0,'YXZ'));
     if(swinging){const pull=body.anchor.point.clone().sub(body.position).normalize();pose.premultiply(new T.Quaternion().setFromUnitVectors(UP,UP.clone().lerp(pull,.58).normalize()));}
     // A release changes the physical constraint instantly, but the body must not snap with it.
@@ -122,11 +132,14 @@ export function createHero(){
     root.quaternion.slerp(pose,1-Math.exp(-dt*(release>.02?3.2:13)));
     const dodgeAge=body.time-body.dodgeTime;
     const dodgeSpin=dodgeAge<.42?Math.PI*2*T.MathUtils.smoothstep(dodgeAge,0,.42):0;
-    const airBank=freeFlight?-.58*air.turnSigned:0;
-    const airDrift=freeFlight?Math.sin(body.time*3.1+(body.webHand?1.3:0))*.055*(1-dive):0;
-    rig.rotation.z=dodgeSpin+airBank;
-    rig.rotation.y=freeFlight?(body.webHand?1:-1)*.28*apex+airDrift:0;
-    rig.rotation.x=landingType==='roll'?-Math.PI*2*landingEase:landingType==='skid'?.10*Math.sin(Math.PI*landingPhase):freeFlight?-.30*apex+.05*climb:0;
+    const airBank=freeFlight?-.50*air.turnSigned:0;
+    const apexRoll=freeFlight?(body.webHand?1:-1)*.28*apex:0;
+    rig.rotation.z=dodgeSpin+airBank+apexRoll;
+    rig.rotation.y=freeFlight?(body.webHand?1:-1)*(.28*apex+.10*kickUp.weight):0;
+    // Keep yaw on root, but put the authored airborne lean on rig so it is not cancelled by pose blending.
+    const coastUp=freeFlight?T.MathUtils.smoothstep(velocity.y,.5,8):0;
+    const flightLean=freeFlight?(-.32*coastUp-.16*kickUp.weight+.18*apex+(1.02+.16*dive)*fall):0;
+    rig.rotation.x=landingType==='roll'?-Math.PI*2*landingEase:landingType==='skid'?.10*Math.sin(Math.PI*landingPhase):flightLean;
     rig.position.y=-landed*.18+(landingType==='roll'?.16*Math.sin(Math.PI*landingPhase):landingType==='skid'?-.07:landingType==='stick'?-.12*(1-landingEase):0);
     root.updateMatrixWorld(true);
     const stride=landingActive?0:(body.grounded||wall)?Math.sin(body.time*(wall?10:14))*Math.min(.48,speed*.06):0;
@@ -143,22 +156,29 @@ export function createHero(){
     else if(zip>.02){targets[0].set(-.30,.42,-.56);targets[1].set(.30,.42,-.56);}
     else if(!body.grounded){
       // Free flight is trajectory-driven rather than a single frozen airborne pose.
-      const pulse=Math.sin(body.time*4.6)*.075*(1-dive);
-      targets[0].set(-.57,.30+pulse,-.02);targets[1].set(.54,.17-pulse,-.21);
-      if(climb>.01){
+      targets[0].set(-.62,.28,.10);targets[1].set(.62,.18,-.20);
+      if(climb>.01&&!kickUp.active){
         const kickSide=air.kickLeg===0?-1:1;
         targets[0].lerp(point(-.72,.58,.14-kickSide*.04),climb*.82);
         targets[1].lerp(point(.70,.42,-.42-kickSide*.04),climb*.82);
       }
+      if(kickUp.weight>.01){
+        const support=body.webHand,free=1-support,ss=support===0?-1:1,fs=free===0?-1:1;
+        targets[support].lerp(point(ss*.84,.55,.50),kickUp.weight*.94);
+        targets[free].lerp(point(fs*.84,.25,-.46),kickUp.weight*.92);
+      }
       if(apex>.01){
-        const twist=body.webHand?1:-1;
-        targets[0].lerp(point(-.62,.52,-.16+twist*.08),apex*.82);
-        targets[1].lerp(point(.54,.28,-.30-twist*.08),apex*.82);
+        // At the apex, keep one side open and let the other side fold in. This reads as a
+        // weightless twist instead of both shoulders collapsing into a seated/tucked pose.
+        const open=body.webHand,fold=1-open;
+        const os=open===0?-1:1,fs=fold===0?-1:1;
+        targets[open].lerp(point(os*.76,.48,.46),apex*.84);
+        targets[fold].lerp(point(fs*.54,.10,-.56),apex*.82);
       }
       if(fall>.01){
         const spread=1-dive*.68;
-        targets[0].lerp(point(-.82*spread,.20,.16+dive*.28),fall*.84);
-        targets[1].lerp(point(.82*spread,.18,.16+dive*.28),fall*.84);
+        targets[0].lerp(point(-.74*spread,.10,.40+dive*.20),fall*.90);
+        targets[1].lerp(point(.74*spread,.08,.40+dive*.20),fall*.90);
       }
       if(freeFlight&&air.turn>.04){
         const bank=air.turnSigned;
@@ -188,22 +208,38 @@ export function createHero(){
       const side=i===0?-1:1,hip=point(side*.16,-.23,0);
       const foot=wall?point(side*.21,-.81+stride*side*.6,-.47):wallJump>.02?point(side*.29,-.58+(i?-.08:.10),.20+wallJump*.34):point(side*(.19+tucked*.15),-1.10+tucked*(i?.23:.45),tucked*(i?.42:.22)+stride*side);
       if(freeFlight){
-        const kickLeg=air.kickLeg,legDrift=Math.sin(body.time*4.0+i*Math.PI)*.055*(1-dive);
-        if(climb>.01){
-          const kickPulse=.5+.5*Math.sin(body.time*8.2+(i===kickLeg?0:Math.PI));
-          const climbFoot=i===kickLeg?point(side*.36,.30,-.82-.10*kickPulse):point(side*.27,-.70,.36+.08*kickPulse);
-          foot.lerp(climbFoot,climb*.98);
+        const kickLeg=air.kickLeg;
+        // Airborne neutral is already a flight pose: legs trail behind instead of hanging vertically.
+        foot.lerp(point(side*.26,-.76,.62),.96);
+        // Climb stays extended. The visible kick is a single release-triggered action, not a loop.
+        if(climb>.01&&!kickUp.active){
+          const climbFoot=point(side*.24,-.88,i===kickLeg?-.10:.28);
+          foot.lerp(climbFoot,climb*.48);
+        }
+        if(kickUp.active){
+          const p=kickUp.phase,w=kickUp.weight;
+          if(i===kickLeg){
+            const chamber=point(side*.30,-.30,-.38),snap=point(side*.38,-.06,-.88),recover=point(side*.28,-.70,.48);
+            const target=p<.52?chamber.clone().lerp(snap,T.MathUtils.smoothstep(p,.10,.52)):snap.clone().lerp(recover,T.MathUtils.smoothstep(p,.52,.94));
+            foot.lerp(target,w*.96);
+          }else{
+            const trailBack=point(side*.25,-.92,.54),trailRecover=point(side*.24,-.76,.38);
+            const trail=trailBack.clone().lerp(trailRecover,T.MathUtils.smoothstep(p,.46,.94));
+            foot.lerp(trail,w*.88);
+          }
         }
         if(apex>.01){
-          const apexFoot=point(side*.34,-.02,-.62+(i===kickLeg?-.10:.09));
-          foot.lerp(apexFoot,apex*.96);
+          // One knee floats inward while the opposite leg stays long and trails behind.
+          // Keeping the long leg low prevents the apex from reading as a seated crouch.
+          const apexFoot=i===kickLeg?point(side*.40,-.28,-.62):point(side*.24,-.98,.72);
+          foot.lerp(apexFoot,apex*.84*(1-kickUp.weight*.55));
         }
         if(fall>.01){
-          const fallFoot=point(side*(.36-.16*dive),-1.04+.08*dive,.42-.22*dive);
-          foot.lerp(fallFoot,fall*.86);
+          // Falling body lengthens into the direction of travel instead of standing upright in air.
+          const fallFoot=point(side*(.31-.10*dive),-.86,.52-.12*dive);
+          foot.lerp(fallFoot,fall*.90);
         }
-        foot.y+=legDrift;
-        if(air.turn>.04){foot.x+=side*air.turn*.12;foot.y+=(i===0?-1:1)*air.turnSigned*.13;foot.z+=(i===0?-1:1)*air.turnSigned*.08;}
+        if(air.turn>.04){foot.x+=side*air.turn*.07;foot.y+=(i===0?-1:1)*air.turnSigned*.06;}
       }
       if(body.grounded&&landingActive){
         if(landingType==='roll')foot.set(side*.24,-.58,.26);
@@ -220,7 +256,7 @@ export function createHero(){
       feet[i].rotation.x=wall?-.8:kick&&i===1?-1.1:0;
     }
     poseInitialized=true;
-    head.rotation.y=wall?0:(airborne?-airMotion.bank*.22+Math.sin(body.time*.7)*.018:Math.sin(body.time*.7)*.025);
+    head.rotation.y=wall?0:(airborne?-airMotion.bank*.18:Math.sin(body.time*.7)*.025);
     root.updateMatrixWorld(true);hands[body.webHand].getWorldPosition(handWorld);hands[swinging?1-body.webHand:1].getWorldPosition(shotHandWorld);
   }};
 }
