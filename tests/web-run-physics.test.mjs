@@ -38,6 +38,18 @@ test('fresh wall contact stays on the wall until an explicit jump',()=>{
  assert.ok(body.position.equals(contactPosition),'explicit kick must not teleport the body');
 });
 
+test('idle wall contact clings in place instead of sliding down under gravity',()=>{
+ const city=makeCity(),body=new SwingBody(city),b=city[0];
+ body.position.set(b.box.min.x-1,18,b.z);body.velocity.set(62,-7,0);
+ for(let i=0;i<12&&!body.wall;i++)body.step(STEP);
+ assert.ok(body.wall,'expected wall contact');
+ const clingPosition=body.position.clone();
+ for(let i=0;i<Math.round(2/STEP);i++)body.step(STEP,{moveMagnitude:0});
+ assert.ok(body.wall,'idle cling should retain wall contact');
+ assert.ok(body.position.distanceTo(clingPosition)<1e-6,`idle wall cling drifted ${body.position.distanceTo(clingPosition)}`);
+ assert.ok(body.velocity.length()<1e-9,'idle wall cling should have zero velocity');
+});
+
 test('wall kick keeps an outward escape component while following the aimed heading',()=>{
  const city=makeCity(),body=new SwingBody(city),b=city[0];
  body.position.set(b.box.min.x-1,12,b.z);body.velocity.set(62,0,0);for(let i=0;i<6;i++)body.step(STEP);

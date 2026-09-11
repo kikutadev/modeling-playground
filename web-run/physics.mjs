@@ -162,12 +162,17 @@ export class SwingBody {
     const brake=!!input.brake;
     const brakeStarted=brake&&!this.wasBraking;
     const neutralStop=this.grounded&&moveMagnitude<.12;
+    // An unanchored wall contact is a deliberate cling state. With no movement input, do not let
+    // gravity or leftover tangential momentum make the avatar slowly slide down the facade.
+    // Forward input still enables wall-running, and jump()/WEB input explicitly kicks away.
+    const idleWallCling=Boolean(this.wall&&!this.anchor&&!input.forward&&!input.dive&&!brake&&moveMagnitude<.12);
+    if(idleWallCling)v.set(0,0,0);
     const speedBeforeInput=Math.hypot(v.x,v.z);
     if(this.grounded&&brakeStarted&&speedBeforeInput>8){
       this.landingType='skid';this.landingStart=this.time;this.landingUntil=this.time+.36;this.landingSpeed=speedBeforeInput;this.landingImpact=0;
     }
-    v.y-= (input.dive ? 38:24)*dt;
-    v.addScaledVector(steer,(this.grounded?42:this.anchor?22:13)*dt);
+    if(!idleWallCling)v.y-= (input.dive ? 38:24)*dt;
+    if(!idleWallCling)v.addScaledVector(steer,(this.grounded?42:this.anchor?22:13)*dt);
     if(this.wall && input.forward) v.y=Math.max(v.y,9);
     if(brake&&!this.grounded&&!this.anchor){
       const horizontal=Math.hypot(v.x,v.z),drop=Math.min(horizontal,32*dt);
