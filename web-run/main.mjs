@@ -82,7 +82,7 @@ const rings=ringPoints.map((point,index)=>{
 let started=false,paused=true,yaw=0,pitch=.13,elapsed=0,checkpoint=0,accumulator=0,last=performance.now(),candidate=null,drag=false,mouseSwing=false,noticeUntil=0,finished=false,failed=false,combatTaught=false,swingTaught=false;
 let best=null;try{best=Number(localStorage.getItem('threadline-best-v2'))||null;}catch{}
 const keys=new Set(),forward=new T.Vector3(0,0,-1),right=new T.Vector3(1,0,0),mobileMove=new T.Vector2();
-let mobileWebHeld=false,lookPointer=null,lookX=0,lookY=0,lookStartX=0,lookStartY=0,lookStartTime=0,movePointer=null,manualLookUntil=-10,pendingWallWeb=null,lastPreWebLaunchTime=-10,lastPreWebLaunchVelocityY=0;
+let mobileWebHeld=false,lookPointer=null,lookX=0,lookY=0,lookStartX=0,lookStartY=0,lookStartTime=0,movePointer=null,manualLookUntil=-10,lastPreWebLaunchTime=-10,lastPreWebLaunchVelocityY=0;
 let attackHeld=false,attackHoldPointer=null,attackHoldTargetId=null,attackHoldArmAt=-10,attackHoldNextAt=-10;
 const cameraTarget=new T.Vector3(),cameraDesired=new T.Vector3(),chaseOffset=new T.Vector3(0,3.6,7.4),aimOffset=new T.Vector3(0,1,-4),cameraForward=new T.Vector3(0,0,-1);
 
@@ -109,39 +109,29 @@ function attachTraversalWeb(desiredDirection=movementIntentDirection()){
   }
   return false;
 }
-function webInputHeld(){return mobileWebHeld||mouseSwing||keys.has('Space');}
-function cancelPendingWallWeb(){pendingWallWeb=null;}
-function processPendingWallWeb(){
-  const pending=pendingWallWeb;if(!pending||body.time<pending.fireAt)return;
-  if(pending.requireHeld&&!webInputHeld()){pendingWallWeb=null;return;}
-  const desired=movementIntentDirection();
-  if(attachTraversalWeb(desired)){pendingWallWeb=null;return;}
-  if(body.time>=pending.expires){pendingWallWeb=null;notice('移動方向に接続先がありません',.9);}
-}
 function releaseWeb(){const released=releaseWithAssist(body,movementIntentDirection(),traversalTuning);if(released&&touchCapable)updateContextUI();return released;}
 function webZip(){if(performWebZip(body,movementIntentDirection(),traversalTuning)){tone(760,.07);if(touchCapable)updateContextUI();return true;}return false;}
-function shoot({requireHeld=true}={}){
+function shoot(){
   if(paused)return;
   const desired=movementIntentDirection();
   const launchFromSurface=body.grounded||body.canWallJump;
-  const firstWebLaunch=!body.anchor&&body.attaches===0;
-  if(launchFromSurface||firstWebLaunch){
+  const firstLaunch=!body.anchor&&body.attaches===0&&lastPreWebLaunchTime<0;
+  if(launchFromSurface||firstLaunch){
     if(launchFromSurface)body.jump(desired);
     else {
-      // The launch roof starts a little above its collision surface, so an immediate first WEB input
-      // can arrive before `grounded` becomes true. Preserve the intended grammar: jump first, web second.
+      // The launch roof starts slightly above its collision surface. Treat the first input as the
+      // same explicit take-off action, but never queue a WEB automatically afterwards.
       body.velocity.y=Math.max(body.velocity.y,16);
       body.velocity.addScaledVector(desired,7);
       body.grounded=false;body.landingType='none';
     }
     lastPreWebLaunchTime=body.time;lastPreWebLaunchVelocityY=body.velocity.y;
-    pendingWallWeb={fireAt:body.time+.14,expires:body.time+.58,requireHeld};
     tone(690,.06);return;
   }
   if(!attachTraversalWeb(desired)&&!webZip())notice('移動方向に接続先がありません',.9);
 }
 function resetTouchState(){
-  mobileMove.set(0,0);mobileWebHeld=false;lookPointer=null;movePointer=null;pendingWallWeb=null;attackHeld=false;attackHoldPointer=null;attackHoldTargetId=null;attackHoldArmAt=-10;attackHoldNextAt=-10;
+  mobileMove.set(0,0);mobileWebHeld=false;lookPointer=null;movePointer=null;attackHeld=false;attackHoldPointer=null;attackHoldTargetId=null;attackHoldArmAt=-10;attackHoldNextAt=-10;
   $('#move-knob').style.transform='translate(-50%,-50%)';$('#move-stick').classList.remove('is-held');
   $('#mobile-web').classList.remove('is-held');$('#mobile-web').setAttribute('aria-pressed','false');
   const context=$('#mobile-context'),dodge=$('#mobile-dodge');if(context){context.hidden=true;context.classList.remove('is-held');}if(dodge)dodge.hidden=true;
@@ -160,7 +150,7 @@ function setPause(value){
   }
 }
 $('#start').addEventListener('click',()=>{if(!started||failed){started=true;restart();}setPause(false);canvas.focus();initAudio();});
-function toggleWeb(){if(paused)return;if(body.anchor)releaseWeb();else if(pendingWallWeb)cancelPendingWallWeb();else shoot({requireHeld:false});canvas.focus();}
+function toggleWeb(){if(paused)return;if(body.anchor)releaseWeb();else shoot();canvas.focus();}
 $('#swing-toggle').addEventListener('click',toggleWeb);$('#pause').addEventListener('click',()=>setPause(!paused));
 
 window.addEventListener('keydown',event=>{
@@ -168,15 +158,15 @@ window.addEventListener('keydown',event=>{
   if(event.repeat)return;
   if(event.code==='Escape'){if(started)setPause(!paused);return;}
   if(paused)return;keys.add(event.code);
-  if(event.code==='Space')shoot({requireHeld:true});if(event.code==='KeyG')toggleWeb();if(event.code==='KeyR')restart();
+  if(event.code==='Space')shoot();if(event.code==='KeyG')toggleWeb();if(event.code==='KeyR')restart();
   if(event.code==='KeyF')combat.shoot(body,forward,hero.shotHandWorld);
   if(event.code==='KeyQ'&&!combat.kick(body,forward))notice(`敵へ近づいて Q — ${DRONE_KICK_RANGE} m以内で飛び蹴り`,1.3);
   if(event.code==='KeyX'){if(!webZip())body.dodge(right.clone().multiplyScalar(keys.has('KeyA')?-1:1));}
 });
-window.addEventListener('keyup',event=>{keys.delete(event.code);if(event.code==='Space'){cancelPendingWallWeb();if(!mouseSwing&&!paused)releaseWeb();}});
-canvas.addEventListener('pointerdown',event=>{if(paused||event.pointerType!=='mouse')return;canvas.focus();canvas.setPointerCapture(event.pointerId);if(event.button===0){mouseSwing=true;shoot({requireHeld:true});}if(event.button===2)drag=true;});
+window.addEventListener('keyup',event=>{keys.delete(event.code);if(event.code==='Space'&&!mouseSwing&&!paused)releaseWeb();});
+canvas.addEventListener('pointerdown',event=>{if(paused||event.pointerType!=='mouse')return;canvas.focus();canvas.setPointerCapture(event.pointerId);if(event.button===0){mouseSwing=true;shoot();}if(event.button===2)drag=true;});
 canvas.addEventListener('pointermove',event=>{if(event.pointerType==='mouse'&&drag){yaw-=event.movementX*.004;pitch=T.MathUtils.clamp(pitch+event.movementY*.003,-.25,.65);}});
-canvas.addEventListener('pointerup',event=>{if(event.pointerType!=='mouse')return;if(event.button===0){mouseSwing=false;cancelPendingWallWeb();if(!keys.has('Space'))releaseWeb();}if(event.button===2)drag=false;});
+canvas.addEventListener('pointerup',event=>{if(event.pointerType!=='mouse')return;if(event.button===0){mouseSwing=false;if(!keys.has('Space'))releaseWeb();}if(event.button===2)drag=false;});
 canvas.addEventListener('contextmenu',event=>event.preventDefault());
 
 function updateMoveStick(event){
@@ -201,8 +191,8 @@ const endLook=event=>{
     else if(action?.kind==='SHOT')combat.shoot(body,movementIntentDirection(),hero.shotHandWorld);
   }
 };$('#mobile-look-zone').addEventListener('pointerup',endLook);$('#mobile-look-zone').addEventListener('pointercancel',event=>{if(lookPointer===event.pointerId)lookPointer=null;});
-$('#mobile-web').addEventListener('pointerdown',event=>{if(paused)return;event.preventDefault();const element=$('#mobile-web');element.setPointerCapture(event.pointerId);mobileWebHeld=true;element.classList.add('is-held');element.setAttribute('aria-pressed','true');initAudio();if(!body.anchor)shoot({requireHeld:true});});
-function releaseMobileWeb(event){if(!mobileWebHeld)return;mobileWebHeld=false;cancelPendingWallWeb();const element=$('#mobile-web');element.classList.remove('is-held');element.setAttribute('aria-pressed','false');if(!paused)releaseWeb();if(event&&element.hasPointerCapture?.(event.pointerId))element.releasePointerCapture(event.pointerId);}
+$('#mobile-web').addEventListener('pointerdown',event=>{if(paused)return;event.preventDefault();const element=$('#mobile-web');element.setPointerCapture(event.pointerId);mobileWebHeld=true;element.classList.add('is-held');element.setAttribute('aria-pressed','true');initAudio();if(!body.anchor)shoot();});
+function releaseMobileWeb(event){if(!mobileWebHeld)return;mobileWebHeld=false;const element=$('#mobile-web');element.classList.remove('is-held');element.setAttribute('aria-pressed','false');if(!paused)releaseWeb();if(event&&element.hasPointerCapture?.(event.pointerId))element.releasePointerCapture(event.pointerId);}
 $('#mobile-web').addEventListener('pointerup',releaseMobileWeb);$('#mobile-web').addEventListener('pointercancel',releaseMobileWeb);
 const contextButton=$('#mobile-context');
 contextButton?.addEventListener('pointerdown',event=>{
@@ -223,7 +213,7 @@ contextButton?.addEventListener('pointerup',endAttackHold);contextButton?.addEve
 $('#mobile-dodge')?.addEventListener('click',event=>{event.preventDefault();if(!paused){initAudio();body.dodge(right.clone().multiplyScalar(mobileMove.x<-.15?-1:1));updateContextUI();}});
 window.addEventListener('blur',()=>{
   const hadDesktopWebInput=!touchCapable&&(mouseSwing||keys.has('Space'));
-  keys.clear();mouseSwing=false;drag=false;cancelPendingWallWeb();
+  keys.clear();mouseSwing=false;drag=false;
   if(hadDesktopWebInput&&!paused&&body.anchor)releaseWeb();
 });
 document.addEventListener('visibilitychange',()=>{
@@ -292,9 +282,6 @@ function step(){
   applyTurnAssist(body,STEP,{desiredDirection:forward,turnIntent},traversalTuning);
   const dive=keys.has('ShiftLeft')||keys.has('ShiftRight')||(touchCapable&&!body.grounded&&mobileMove.y>.78);
   body.step(STEP,{steer,forward:!brakeIntent&&(keys.has('KeyW')||mobileMove.y<-.18),brake:brakeIntent,moveMagnitude,dive,reel:keys.has('KeyE')||shouldAutoReel(body,assistState)});
-  // Wall contact is stable until the player asks for WEB. That input kicks away first,
-  // then attaches after a short clearance beat instead of auto-jumping on contact.
-  processPendingWallWeb();
   applyReleaseAssist(body,STEP,traversalTuning);
   combat.step(STEP,body);advanceAttackHold();if(!finished)elapsed+=STEP;
   if(body.outOfBounds){const safe=checkpoint?ringPoints[checkpoint-1].clone().add(new T.Vector3(0,2,5)):undefined;body.respawn(safe);before.copy(body.position);elapsed+=5;notice('エリア外 — 通過地点へ戻りました（+5秒）',2);snapCamera();}
@@ -314,7 +301,7 @@ function render(now){
   const dt=Math.min((now-last)/1000,.05);last=now;
   if(!paused){accumulator+=dt;while(accumulator>=STEP){step();finishCheck();accumulator-=STEP;if(paused)break;}}else accumulator=0;
   direction();candidate=chooseTraversalAnchor(movementIntentDirection());
-  hero.update(body,forward,paused?0:dt,combat,{webPreparing:!body.anchor&&(mobileWebHeld||mouseSwing||keys.has('Space')||!!pendingWallWeb),webAim:candidate?.point??null});combatView.update(paused?0:dt,body);
+  hero.update(body,forward,paused?0:dt,combat,{webPreparing:!body.anchor&&(mobileWebHeld||mouseSwing||keys.has('Space')),webAim:candidate?.point??null});combatView.update(paused?0:dt,body);
   rope.visible=!!body.anchor;if(body.anchor){const attribute=rope.geometry.attributes.position;attribute.setXYZ(0,...hero.handWorld.toArray());attribute.setXYZ(1,...body.anchor.point.toArray());attribute.needsUpdate=true;}
   marker.visible=!!candidate&&!body.anchor;if(candidate){marker.position.copy(candidate.point);marker.rotation.y+=dt;}
 
@@ -355,7 +342,7 @@ function render(now){
 }
 requestAnimationFrame(render);
 
-export function readPlayState(){const intent=movementIntentDirection();return {position:body.position.toArray(),velocity:body.velocity.toArray(),yaw,time:body.time,attached:!!body.anchor,attachTime:body.attachTime??-10,releaseTime:body.releaseTime??-10,preWebLaunchTime:lastPreWebLaunchTime,preWebLaunchVelocityY:lastPreWebLaunchVelocityY,pendingWallWeb:!!pendingWallWeb,intentDirection:intent.toArray(),candidatePoint:candidate?.point?.toArray?.()??null,anchorKind:body.anchor?.kind??null,anchorEnemyId:body.anchor?.enemyId??null,anchorPoint:body.anchor?.point?.toArray?.()??null,titans:combat.drones.map(d=>({id:d.id,position:d.position.toArray(),hp:d.hp})),grounded:body.grounded,wall:!!body.wall,wallJumpTime:body.wallJumpTime,wallJumpFacing:body.wallJumpFacing.toArray(),attackHeld,attackHoldTargetId,shotAt:combat.shotAt,kickAt:combat.kickAt,checkpoint,health:combat.health,defeated:combat.defeated,finished,failed,paused,zipTime:body.zipTime,landingType:body.landingType,landingUntil:body.landingUntil};}
+export function readPlayState(){const intent=movementIntentDirection();return {position:body.position.toArray(),velocity:body.velocity.toArray(),yaw,time:body.time,attached:!!body.anchor,attachTime:body.attachTime??-10,releaseTime:body.releaseTime??-10,preWebLaunchTime:lastPreWebLaunchTime,preWebLaunchVelocityY:lastPreWebLaunchVelocityY,intentDirection:intent.toArray(),candidatePoint:candidate?.point?.toArray?.()??null,anchorKind:body.anchor?.kind??null,anchorEnemyId:body.anchor?.enemyId??null,anchorPoint:body.anchor?.point?.toArray?.()??null,titans:combat.drones.map(d=>({id:d.id,position:d.position.toArray(),hp:d.hp})),grounded:body.grounded,wall:!!body.wall,wallJumpTime:body.wallJumpTime,wallJumpFacing:body.wallJumpFacing.toArray(),attackHeld,attackHoldTargetId,shotAt:combat.shotAt,kickAt:combat.kickAt,checkpoint,health:combat.health,defeated:combat.defeated,finished,failed,paused,zipTime:body.zipTime,landingType:body.landingType,landingUntil:body.landingUntil};}
 const e2eParams=new URLSearchParams(location.search);
 if(e2eParams.has('e2e')){
   globalThis.__threadlineReadState=readPlayState;
@@ -365,7 +352,7 @@ if(e2eParams.has('e2e')){
       const count=Math.max(0,Math.min(600,Math.floor(steps)));
       for(let i=0;i<count&&!paused;i++){
         step();finishCheck();direction();candidate=chooseTraversalAnchor(movementIntentDirection());
-        hero.update(body,forward,STEP,combat,{webPreparing:!body.anchor&&(mobileWebHeld||mouseSwing||keys.has('Space')||!!pendingWallWeb),webAim:candidate?.point??null});
+        hero.update(body,forward,STEP,combat,{webPreparing:!body.anchor&&(mobileWebHeld||mouseSwing||keys.has('Space')),webAim:candidate?.point??null});
         combatView.update(STEP,body);
       }
       return readPlayState();

@@ -48,105 +48,13 @@ export function computeAirborneMotion(body, forward){
   return {airborne:true,climb,apex,fall,dive,turn,turnSigned,kickLeg:1-(body.webHand??0)};
 }
 
-const RELEASE_TRAVERSAL_DURATION=.62;
-const RELEASE_TRAVERSAL_KEYS=[
-  {at:0,  pitch:-.18,roll:.02,twist:.00,releasedArm:[.60,.72,.30],freeArm:[.68,.18,-.48],kickFoot:[.34,-.78,.16],supportFoot:[.30,-1.02,.34]},
-  {at:.15,pitch:-.30,roll:.08,twist:.12,releasedArm:[.68,.66,.42],freeArm:[.70,.08,-.60],kickFoot:[.40,-.18,-.36],supportFoot:[.31,-1.10,.40]},
-  {at:.34,pitch:-.50,roll:.18,twist:.30,releasedArm:[.70,.40,.58],freeArm:[.72,-.02,-.48],kickFoot:[.50,.28,-.88],supportFoot:[.32,-1.15,.46]},
-  {at:.58,pitch:-.72,roll:.16,twist:.34,releasedArm:[.72,.14,.72],freeArm:[.66,.06,.30],kickFoot:[.54,-.80,.30],supportFoot:[.34,-1.16,.50]},
-  {at:.78,pitch:-.78,roll:.08,twist:.18,releasedArm:[.68,.08,.78],freeArm:[.68,.16,.58],kickFoot:[.68,-1.04,.54],supportFoot:[.34,-1.14,.52]},
-  {at:1,  pitch:-.76,roll:.04,twist:.08,releasedArm:[.62,.10,.74],freeArm:[.70,.20,.52],kickFoot:[.64,-1.08,.56],supportFoot:[.34,-1.15,.50]},
-];
-
-function sampleReleaseKey(phase){
-  const p=T.MathUtils.clamp(phase,0,1);
-  let a=RELEASE_TRAVERSAL_KEYS[0],b=RELEASE_TRAVERSAL_KEYS.at(-1);
-  for(let i=1;i<RELEASE_TRAVERSAL_KEYS.length;i++){
-    if(p<=RELEASE_TRAVERSAL_KEYS[i].at){a=RELEASE_TRAVERSAL_KEYS[i-1];b=RELEASE_TRAVERSAL_KEYS[i];break;}
-  }
-  const span=Math.max(1e-6,b.at-a.at),t=T.MathUtils.smoothstep((p-a.at)/span,0,1);
-  const lerp=(x,y)=>T.MathUtils.lerp(x,y,t),lerp3=(x,y)=>[lerp(x[0],y[0]),lerp(x[1],y[1]),lerp(x[2],y[2])];
-  return {
-    pitch:lerp(a.pitch,b.pitch),roll:lerp(a.roll,b.roll),twist:lerp(a.twist,b.twist),
-    releasedArm:lerp3(a.releasedArm,b.releasedArm),freeArm:lerp3(a.freeArm,b.freeArm),
-    kickFoot:lerp3(a.kickFoot,b.kickFoot),supportFoot:lerp3(a.supportFoot,b.supportFoot),
-  };
-}
-
-// The release is one authored traversal sentence: carry the swing pose, chamber once, snap once,
-// sweep that same leg behind the body, then lengthen into the ballistic coast.
-export function sampleReleaseTraversalPose(body){
-  const age=body.time-(body.releaseTime??-10);
-  if(age<=0||age>RELEASE_TRAVERSAL_DURATION)return {active:false,phase:0,weight:0,sweep:0,stage:'none'};
-  const phase=T.MathUtils.clamp(age/RELEASE_TRAVERSAL_DURATION,0,1),key=sampleReleaseKey(phase);
-  const released=body.webHand??0,free=1-released,kick=free,support=released;
-  const releasedSide=released===0?-1:1,freeSide=free===0?-1:1,kickSide=kick===0?-1:1,supportSide=support===0?-1:1;
-  const toPoint=(side,v)=>point(side*v[0],v[1],v[2]),arms=[null,null],feet=[null,null];
-  arms[released]=toPoint(releasedSide,key.releasedArm);arms[free]=toPoint(freeSide,key.freeArm);
-  feet[kick]=toPoint(kickSide,key.kickFoot);feet[support]=toPoint(supportSide,key.supportFoot);
-  const stage=phase<.15?'release':phase<.34?'chamber':phase<.58?'snap':phase<.78?'sweep':'coast';
-  return {
-    active:true,phase,weight:1,sweep:T.MathUtils.smoothstep(phase,.34,.78),stage,
-    torsoPitch:key.pitch,torsoRoll:releasedSide*key.roll,torsoTwist:releasedSide*key.twist,arms,feet,
-  };
-}
-
-export function computeReleaseKickUp(body){
-  const pose=sampleReleaseTraversalPose(body);
-  return {active:pose.active,phase:pose.phase,weight:pose.weight,sweep:pose.sweep};
+export function freeFlightPitch(velocity){
+  const horizontal=Math.hypot(velocity?.x??0,velocity?.z??0);
+  return -Math.PI/2+Math.atan2(velocity?.y??0,Math.max(horizontal,1e-4));
 }
 
 export function nextWebHandIndex(body){
   return Number.isInteger(body.attaches)?body.attaches%2:1-(body.webHand??0);
-}
-
-// After the release accent, vertical velocity selects a complete ballistic silhouette. The apex opens
-// sideways, not forward at the knee, so it reads as a weightless accent rather than air-running.
-export function sampleBallisticTraversalPose(body){
-  const vy=body.velocity?.y??0;
-  const released=body.webHand??0,other=1-released,kick=other,support=released;
-  const releasedSide=released===0?-1:1,otherSide=other===0?-1:1,kickSide=kick===0?-1:1,supportSide=support===0?-1:1;
-  const arms=[null,null],feet=[null,null];
-  const put=(array,index,side,x,y,z)=>{array[index]=point(side*x,y,z);};
-  if(vy>3.8){
-    // The coast is not a frozen pose. As upward speed bleeds away, the body quietly opens toward
-    // the apex accent while both feet remain behind the pelvis.
-    const prepare=1-T.MathUtils.smoothstep(vy,4,9);
-    const blend=(a,b)=>a.clone().lerp(b,prepare);
-    arms[released]=blend(point(releasedSide*.72,.10,.72),point(releasedSide*.88,.32,.54));
-    arms[other]=blend(point(otherSide*.78,.22,.52),point(otherSide*.86,.08,.56));
-    feet[kick]=blend(point(kickSide*.62,-1.10,.50),point(kickSide*.70,-.92,.38));
-    feet[support]=blend(point(supportSide*.36,-1.15,.56),point(supportSide*.38,-1.14,.60));
-    return {
-      phase:'climb',open:prepare*.28,
-      torsoPitch:T.MathUtils.lerp(-.76,-.84,prepare),
-      torsoRoll:releasedSide*T.MathUtils.lerp(.04,.11,prepare),
-      torsoTwist:releasedSide*T.MathUtils.lerp(.08,.17,prepare),
-      arms,feet,
-    };
-  }
-  if(vy>-2){
-    const open=.32+.68*(1-T.MathUtils.smoothstep(Math.abs(vy),.6,4.2));
-    const blend=(a,b)=>a.clone().lerp(b,open);
-    const climbReleased=point(releasedSide*.80,.20,.64),climbOther=point(otherSide*.80,.30,.46);
-    const starReleased=point(releasedSide*.98,.52,.36),starOther=point(otherSide*.86,-.02,.48);
-    const climbKick=point(kickSide*.64,-1.06,.46),climbSupport=point(supportSide*.38,-1.15,.58);
-    const starKick=point(kickSide*.80,-.62,.12),starSupport=point(supportSide*.40,-1.15,.62);
-    arms[released]=blend(climbReleased,starReleased);arms[other]=blend(climbOther,starOther);
-    feet[kick]=blend(climbKick,starKick);feet[support]=blend(climbSupport,starSupport);
-    return {
-      phase:'apex',open,
-      torsoPitch:T.MathUtils.lerp(-.84,-.92,open),
-      torsoRoll:releasedSide*T.MathUtils.lerp(.08,.30,open),
-      torsoTwist:releasedSide*T.MathUtils.lerp(.12,.40,open),
-      arms,feet,
-    };
-  }
-  const dive=T.MathUtils.smoothstep(-vy,2,14),longLeg=nextWebHandIndex(body),softLeg=1-longLeg;
-  const longSide=longLeg===0?-1:1,softSide=softLeg===0?-1:1;
-  put(arms,released,releasedSide,.72,.12,.82+dive*.06);put(arms,other,otherSide,.82,.28,.66+dive*.04);
-  put(feet,longLeg,longSide,.40,-1.17,.58-dive*.03);put(feet,softLeg,softSide,.64,-1.04,.44-dive*.02);
-  return {phase:'fall',open:0,torsoPitch:-1.04-.16*dive,torsoRoll:releasedSide*.06,torsoTwist:releasedSide*.08,arms,feet};
 }
 
 // Swinging also has a deliberate silhouette: the web-side leg stays long while the free-side leg
@@ -247,31 +155,27 @@ export function createHero(){
     const airborne=!body.grounded&&!wall&&!swinging;
     const airMotion=airborne?airborneMotionWeights(velocity,forward,release):{climb:0,apex:0,fall:0,bank:0};
     const freeFlight=air.airborne&&wallJump<=.02&&!kick&&zip<=.02;
-    const releasePose=freeFlight?sampleReleaseTraversalPose(body):{active:false,phase:0,weight:0,sweep:0,stage:'none',arms:null,feet:null};
-    const releaseAction=freeFlight&&releasePose.active;
-    const ballisticPose=freeFlight&&!releaseAction?sampleBallisticTraversalPose(body):null;
     const landed=Math.max(0,1-(body.time-body.landTime)/.3);
     const landingActive=motionState.landingAllowed&&body.time<(body.landingUntil??-10)&&body.landingType!=='run';
     const landingType=landingActive?body.landingType:'none';
     const landingDuration=Math.max(.001,(body.landingUntil??body.time)-(body.landingStart??body.time));
     const landingPhase=landingActive?T.MathUtils.clamp((body.time-body.landingStart)/landingDuration,0,1):1;
     const landingEase=T.MathUtils.smoothstep(landingPhase,0,1);
-    const tucked=wall||tetheredGround?0:body.grounded?landed*.8:swinging?0:kick?.35:freeFlight?.08:Math.max(zip*.25+.10,wallJump*.78,airMotion.apex*.58);
+    const tucked=wall||tetheredGround?0:body.grounded?landed*.8:swinging?0:kick?.35:freeFlight?0:Math.max(zip*.25+.10,wallJump*.78,airMotion.apex*.58);
     const landingPitch=landingType==='skid'?T.MathUtils.lerp(.34,-.04,landingEase):landingType==='stick'?T.MathUtils.lerp(-.22,-.08,landingEase):-.08;
     const airbornePitch=freeFlight?0:air.airborne?Math.min(.38,speed*.010):Math.min(.9,speed*.014);
     const posePitch=wall?0:tetheredGround?-.20:body.grounded?landingPitch:airbornePitch;
     const pose=new T.Quaternion().setFromEuler(new T.Euler(posePitch,yaw,0,'YXZ'));
-    // The physical rope constraint disappears immediately, but the outgoing body attitude carries for
-    // a few frames so release reads as follow-through rather than an orientation snap.
-    root.quaternion.slerp(pose,1-Math.exp(-dt*(releaseAction?8:release>.02?5.5:13)));
+    // Root yaw remains camera/intent driven; passive flight pitch is handled by the rig below.
+    root.quaternion.slerp(pose,1-Math.exp(-dt*(release>.02?3.5:13)));
     const dodgeAge=body.time-body.dodgeTime;
     const dodgeSpin=dodgeAge<.42?Math.PI*2*T.MathUtils.smoothstep(dodgeAge,0,.42):0;
-    const airBank=freeFlight?-.50*air.turnSigned:0;
-    const authoredPose=releaseAction?releasePose:ballisticPose;
-    const targetPitch=freeFlight?(authoredPose?.torsoPitch??0):swinging?(swingPose?.torsoPitch??0):0;
-    const targetTwist=freeFlight?(authoredPose?.torsoTwist??0):swinging?(swingPose?.torsoTwist??0):0;
-    const targetRoll=(freeFlight?airBank:0)+(freeFlight?(authoredPose?.torsoRoll??0):swinging?(swingPose?.torsoRoll??0):0);
-    const rotationFollow=releaseAction?11:swinging?9:freeFlight?8:14,rotationAlpha=1-Math.exp(-dt*rotationFollow);
+    // Passive free flight has no authored action. The body simply aligns its head-to-feet axis with
+    // the actual trajectory, so descent becomes a head-first fall instead of a head-up float.
+    const targetPitch=freeFlight?freeFlightPitch(velocity):swinging?(swingPose?.torsoPitch??0):0;
+    const targetTwist=swinging?(swingPose?.torsoTwist??0):0;
+    const targetRoll=swinging?(swingPose?.torsoRoll??0):0;
+    const rotationFollow=freeFlight?7:swinging?9:14,rotationAlpha=1-Math.exp(-dt*rotationFollow);
     smoothedAirRotation.x=T.MathUtils.lerp(smoothedAirRotation.x,targetPitch,rotationAlpha);
     smoothedAirRotation.y=T.MathUtils.lerp(smoothedAirRotation.y,targetTwist,rotationAlpha);
     smoothedAirRotation.z=T.MathUtils.lerp(smoothedAirRotation.z,targetRoll,rotationAlpha);
@@ -301,23 +205,20 @@ export function createHero(){
     else if(wallJump>.02){targets[0].set(-.58,.34,.16);targets[1].set(.58,.46,.04);}
     else if(zip>.02){targets[0].set(-.30,.42,-.56);targets[1].set(.30,.42,-.56);}
     else if(!body.grounded){
-      const flightPose=releaseAction?releasePose:ballisticPose;
-      if(flightPose?.arms){targets[0].copy(flightPose.arms[0]);targets[1].copy(flightPose.arms[1]);}
-      else {
+      if(freeFlight){
+        // Baseline after release: preserve the outgoing swing pose instead of inventing a new action.
+        targets[0].copy(smoothedArms[0]);targets[1].copy(smoothedArms[1]);
+      }else{
         const trailArm=body.webHand,reachArm=1-trailArm,trailSide=trailArm===0?-1:1,reachSide=reachArm===0?-1:1;
         targets[trailArm].set(trailSide*.72,.30,.52);targets[reachArm].set(reachSide*.72,.26,-.58);
       }
-      if(freeFlight&&air.turn>.04){
-        const bank=air.turnSigned;targets[0].y+=bank*.14;targets[1].y-=bank*.14;targets[0].z-=bank*.11;targets[1].z+=bank*.11;
-      }
       if(webPreparing&&motion?.webAim){
         const aim=rig.worldToLocal(motion.webAim.clone()).sub(shoulders[nextWebHand]).normalize();
-        const releaseReachGate=releaseAction?T.MathUtils.smoothstep(releasePose.phase,.70,.90):1;
-        targets[nextWebHand].lerp(shoulders[nextWebHand].clone().addScaledVector(aim,.755),.78*webArmWeight*releaseReachGate);
+        targets[nextWebHand].lerp(shoulders[nextWebHand].clone().addScaledVector(aim,.755),.78*webArmWeight);
       }
     }
     if(combat&&combat.time-combat.shotAt<.3&&combat.aimPoint){const shooting=swinging?1-body.webHand:1,direction=rig.worldToLocal(combat.aimPoint.clone()).sub(shoulders[shooting]).normalize();targets[shooting].copy(shoulders[shooting]).addScaledVector(direction,.755);}
-    const armFollow=releaseAction?18:swinging?22:release>.02?8:freeFlight?12:air.airborne?9:12;
+    const armFollow=swinging?22:freeFlight?(webPreparing?12:0):release>.02?8:air.airborne?9:12;
     const armAlpha=poseInitialized?1-Math.exp(-dt*armFollow):1;
     for(let i=0;i<2;i++){
       smoothedArms[i].lerp(targets[i],armAlpha);
@@ -333,8 +234,9 @@ export function createHero(){
       }
       else if(swinging){foot.copy(swingPose.feet[i]);}
       else if(freeFlight){
-        const flightPose=releaseAction?releasePose:ballisticPose;if(flightPose?.feet)foot.copy(flightPose.feet[i]);
-        if(air.turn>.04){foot.x+=side*air.turn*.07;foot.y+=(i===0?-1:1)*air.turnSigned*.06;}
+        // Hold the exact outgoing leg pose during passive free flight. This deliberately removes the
+        // previous chamber/snap/sweep/apex/fall choreography.
+        foot.copy(smoothedFeet[i]);
       }
       if(body.grounded&&landingActive){
         if(landingType==='roll')foot.set(side*.24,-.58,.26);
@@ -342,13 +244,10 @@ export function createHero(){
         else foot.set(side*.28,-.78,-.18);
       }
       if(kick&&i===1)foot.set(.17,-.2,-.85);
-      // The release kick needs a fast leg response; otherwise smoothing preserves the prior swing
-      // tuck for several frames and visually delays the one-shot action.
-      const legFollow=tetheredGround?24:(body.grounded||wall)?22:swinging?14:releaseAction?26:freeFlight?12:air.airborne?9:10;
+      const legFollow=tetheredGround?24:(body.grounded||wall)?22:swinging?14:freeFlight?0:air.airborne?9:10;
       const legAlpha=poseInitialized?1-Math.exp(-dt*legFollow):1;
       smoothedFeet[i].lerp(foot,legAlpha);
-      const kickPole=releaseAction&&i===air.kickLeg&&releasePose.phase<.55;
-      const pole=kickPole?point(side*.34,.30,-.28):point(side*.26,-.45,-.85);
+      const pole=point(side*.26,-.45,-.85);
       const {joint,end}=solveLimb(hip,smoothedFeet[i],pole,.48,.46);
       link(pieces[4+i*2],hip,joint,.145);link(pieces[5+i*2],joint,end,.106);joints[2+i].position.copy(joint);feet[i].position.copy(end);
       feet[i].rotation.x=wall?-.8:kick&&i===1?-1.1:0;
@@ -359,7 +258,7 @@ export function createHero(){
       const localAim=rig.worldToLocal(motion.webAim.clone());
       webLookYaw=T.MathUtils.clamp(Math.atan2(-localAim.x,-localAim.z),-.65,.65)*.44*webHeadWeight;
     }
-    head.rotation.y=wall?0:(airborne?-airMotion.bank*.18+webLookYaw:Math.sin(body.time*.7)*.025);
+    head.rotation.y=wall?0:(airborne?(freeFlight?webLookYaw:-airMotion.bank*.18+webLookYaw):Math.sin(body.time*.7)*.025);
     wasWebPreparing=webPreparing;
     root.updateMatrixWorld(true);hands[body.webHand].getWorldPosition(handWorld);hands[swinging?1-body.webHand:1].getWorldPosition(shotHandWorld);
   }};
