@@ -12,6 +12,7 @@ render:
 test:
     pnpm typecheck
     pnpm test
+    pnpm test:web-run
     python3 -m unittest discover -s tests -p 'test_*.py'
 
 all: build character walk ik suzu raven bastion strix ashley wyvern dog corgi corgi-chibi fes256 aster base45 lumi test render

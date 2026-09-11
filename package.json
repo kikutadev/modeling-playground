@@ -10,6 +10,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "test": "node --test tests/*.test.ts audio/test/*.test.mjs",
+    "test:web-run": "node --test tests/web-run-*.test.mjs",
     "audio:test": "node --test audio/test/*.test.mjs tests/audio-assets.test.ts",
     "audio:generate": "node audio/scripts/generate.mjs",
     "audio:battle": "node audio/scripts/generate-battle.mjs",
