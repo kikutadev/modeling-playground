@@ -57,6 +57,22 @@ export function nextWebHandIndex(body){
   return Number.isInteger(body.attaches)?body.attaches%2:1-(body.webHand??0);
 }
 
+// Passive free flight uses one quiet, elongated hold. It is not another animation phase: both arms
+// simply relax out of the compressed run/swing pose so an airborne character never looks broken.
+export function passiveFreeFlightArmTarget(index){
+  const side=index===0?-1:1;
+  return point(side*.58,.08,.46);
+}
+
+export function heroArmFollowRate({shooting=false,swinging=false,freeFlight=false,webPreparing=false,release=0,airborne=false}={}){
+  if(shooting)return 26;
+  if(swinging)return 22;
+  if(freeFlight)return webPreparing?12:9;
+  if(release>.02)return 8;
+  if(airborne)return 9;
+  return 12;
+}
+
 // Swinging also has a deliberate silhouette: the web-side leg stays long while the free-side leg
 // softens near the bottom of the arc, then both trail as upward velocity builds. This avoids both a
 // rigid mannequin swing and a run cycle in mid-air.
@@ -206,8 +222,9 @@ export function createHero(){
     else if(zip>.02){targets[0].set(-.30,.42,-.56);targets[1].set(.30,.42,-.56);}
     else if(!body.grounded){
       if(freeFlight){
-        // Baseline after release: preserve the outgoing swing pose instead of inventing a new action.
-        targets[0].copy(smoothedArms[0]);targets[1].copy(smoothedArms[1]);
+        // No authored airborne choreography: settle into one elongated hold. This keeps the arms
+        // readable while the body itself follows the trajectory into head-first descent.
+        targets[0].copy(passiveFreeFlightArmTarget(0));targets[1].copy(passiveFreeFlightArmTarget(1));
       }else{
         const trailArm=body.webHand,reachArm=1-trailArm,trailSide=trailArm===0?-1:1,reachSide=reachArm===0?-1:1;
         targets[trailArm].set(trailSide*.72,.30,.52);targets[reachArm].set(reachSide*.72,.26,-.58);
@@ -217,8 +234,9 @@ export function createHero(){
         targets[nextWebHand].lerp(shoulders[nextWebHand].clone().addScaledVector(aim,.755),.78*webArmWeight);
       }
     }
-    if(combat&&combat.time-combat.shotAt<.3&&combat.aimPoint){const shooting=swinging?1-body.webHand:1,direction=rig.worldToLocal(combat.aimPoint.clone()).sub(shoulders[shooting]).normalize();targets[shooting].copy(shoulders[shooting]).addScaledVector(direction,.755);}
-    const armFollow=swinging?22:freeFlight?(webPreparing?12:0):release>.02?8:air.airborne?9:12;
+    const shootingActive=Boolean(combat&&combat.time-combat.shotAt<.3&&combat.aimPoint);
+    if(shootingActive){const shooting=swinging?1-body.webHand:1,direction=rig.worldToLocal(combat.aimPoint.clone()).sub(shoulders[shooting]).normalize();targets[shooting].copy(shoulders[shooting]).addScaledVector(direction,.755);}
+    const armFollow=heroArmFollowRate({shooting:shootingActive,swinging,freeFlight,webPreparing,release,airborne:air.airborne});
     const armAlpha=poseInitialized?1-Math.exp(-dt*armFollow):1;
     for(let i=0;i<2;i++){
       smoothedArms[i].lerp(targets[i],armAlpha);
