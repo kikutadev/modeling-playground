@@ -1,0 +1,1 @@
+function e(){return e=>{let t=document.getElementById(e);if(!t)throw Error(`Missing element #${e}`);return t}}function t(e){return e instanceof Error?e.message:String(e)}export{t as n,e as t};
